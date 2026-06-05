@@ -1,0 +1,12 @@
+@page
+@model ErrorModel
+@{
+    ViewData["Title"] = "Chyba";
+}
+
+<h2>Došlo k chybě</h2>
+<p>Při zpracování požadavku došlo k neočekávané chybě.</p>
+@if (Model.RequestId is not null)
+{
+    <p class="hint">Request ID: <code>@Model.RequestId</code></p>
+}
