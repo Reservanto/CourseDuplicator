@@ -106,6 +106,13 @@ public class AuthService
         return stt;
     }
 
+    /// <summary>Zneplatní cachovaný STT - další GetValidShortTimeTokenAsync ho regeneruje z LTT.</summary>
+    public void InvalidateShortTimeToken()
+    {
+        Session.Remove(SttKey);
+        Session.Remove(SttExpiresKey);
+    }
+
     /// <summary>Nastaví CSRF flag před přesměrováním na autorizaci Reservanta (spec 3.5, TTL 10 minut).</summary>
     public void MarkAwaitingCallback() =>
         SetUnixSeconds(AwaitingCallbackKey, DateTimeOffset.UtcNow.Add(AwaitingCallbackTtl).ToUnixTimeSeconds());

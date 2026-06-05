@@ -1,3 +1,5 @@
+using System.Net;
+using CourseDuplicator.Models.Reservanto;
 using CourseDuplicator.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -131,6 +133,170 @@ public class IndexModel : PageModel
         {
             _logger.LogError(ex, "Načtení kurzů selhalo: {StatusCode} {ResponseBody}", ex.StatusCode, ex.ResponseBody);
             return ApiError("Načtení kurzů z Reservanta selhalo. Zkuste to prosím znovu.");
+        }
+    }
+
+    /// <summary>Max souběžných volání Course/Create (spec 5F).</summary>
+    private const int MaxParallelCourseCreates = 3;
+
+    /// <summary>Max počet retry při HTTP 429, backoff 1s/2s/4s (spec 8).</summary>
+    private const int MaxRateLimitRetries = 3;
+
+    // Request body POST /?handler=CreateCourses (spec 7.2). Datumy jsou UnixTimestamp (UTC sekundy).
+    public record CreateCoursesRequest(CreateGlobalSettings? GlobalSettings, List<CreateCourseItem>? Courses);
+    public record CreateGlobalSettings(bool SingleLectionBookingEnabled, long? SingleLectionBookingFrom);
+    public record CreateCourseItem(
+        string? Name, string? Description, int SegmentId, int BookingResourceId, int? BookingServiceId,
+        int Capacity, decimal? PriceWithVat, long RegistrationEnd, int? CalendarId, List<CreateLectionItem>? Lections);
+    public record CreateLectionItem(long Start, int LengthMinutes);
+
+    /// <summary>Výsledek vytvoření jednoho kurzu (JSON pro frontend, camelCase).</summary>
+    public record CreateCourseResult(string OriginalName, bool Success, int? NewCourseId, string? Error);
+
+    /// <summary>
+    /// POST /?handler=CreateCourses - vytvoří kurzy přes Course/Create, max 3 paralelně.
+    /// Chyba jednoho kurzu nezastaví ostatní (spec 5F); výsledky se vrací per kurz.
+    /// </summary>
+    public async Task<IActionResult> OnPostCreateCoursesAsync([FromBody] CreateCoursesRequest request, CancellationToken ct)
+    {
+        if (request?.Courses is not { Count: > 0 })
+            return ApiError("Žádné kurzy k vytvoření.", StatusCodes.Status400BadRequest);
+
+        foreach (var (course, index) in request.Courses.Select((c, i) => (c, i)))
+        {
+            if (string.IsNullOrWhiteSpace(course.Name))
+                return ApiError($"Kurz #{index + 1} nemá název.", StatusCodes.Status400BadRequest);
+            if (course.SegmentId <= 0 || course.BookingResourceId <= 0 || course.Capacity <= 0 || course.RegistrationEnd <= 0)
+                return ApiError($"Kurz \"{course.Name}\" má neúplná povinná pole.", StatusCodes.Status400BadRequest);
+            if (course.Lections is not { Count: > 0 } || course.Lections.Any(l => l.Start <= 0 || l.LengthMinutes <= 0))
+                return ApiError($"Kurz \"{course.Name}\" nemá žádnou platnou lekci.", StatusCodes.Status400BadRequest);
+        }
+
+        var globalSettings = request.GlobalSettings ?? new CreateGlobalSettings(false, null);
+
+        try
+        {
+            // STT se sdílí přes celý batch; při expiraci uprostřed ho regeneruje první neúspěšný
+            // task (serializovaně přes zámek), ostatní převezmou novou hodnotu.
+            var currentStt = await _authService.GetValidShortTimeTokenAsync(ct);
+            using var sttLock = new SemaphoreSlim(1, 1);
+
+            async Task<string> RefreshSttAsync(string failedStt)
+            {
+                await sttLock.WaitAsync(ct);
+                try
+                {
+                    if (currentStt == failedStt)
+                    {
+                        _authService.InvalidateShortTimeToken();
+                        currentStt = await _authService.GetValidShortTimeTokenAsync(ct);
+                    }
+                    return currentStt;
+                }
+                finally
+                {
+                    sttLock.Release();
+                }
+            }
+
+            using var semaphore = new SemaphoreSlim(MaxParallelCourseCreates);
+            var results = await Task.WhenAll(request.Courses.Select(async course =>
+            {
+                await semaphore.WaitAsync(ct);
+                try
+                {
+                    return await CreateOneCourseAsync(course, globalSettings, () => currentStt, RefreshSttAsync, ct);
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            }));
+
+            var successCount = results.Count(r => r.Success);
+            _logger.LogInformation(
+                "Batch duplikace dokončen: {SuccessCount}/{TotalCount} kurzů vytvořeno úspěšně.",
+                successCount, results.Length);
+
+            return new JsonResult(new { results });
+        }
+        catch (NotAuthenticatedException)
+        {
+            return Unauthorized();
+        }
+    }
+
+    private async Task<CreateCourseResult> CreateOneCourseAsync(
+        CreateCourseItem course,
+        CreateGlobalSettings globalSettings,
+        Func<string> getStt,
+        Func<string, Task<string>> refreshSttAsync,
+        CancellationToken ct)
+    {
+        var createRequest = new CourseCreateRequest
+        {
+            Name = course.Name,
+            Description = course.Description,
+            SegmentId = course.SegmentId,
+            BookingResourceId = course.BookingResourceId,
+            BookingServiceId = course.BookingServiceId,
+            CalendarId = course.CalendarId,
+            Capacity = course.Capacity,
+            PriceWithVat = course.PriceWithVat,
+            RegistrationEnd = DateTimeOffset.FromUnixTimeSeconds(course.RegistrationEnd),
+            SingleLectionBookingEnabled = globalSettings.SingleLectionBookingEnabled,
+            SingleLectionBookingFrom = globalSettings.SingleLectionBookingFrom is { } from
+                ? DateTimeOffset.FromUnixTimeSeconds(from)
+                : null,
+            Lections = course.Lections!.Select(l => new Lection
+            {
+                Start = DateTimeOffset.FromUnixTimeSeconds(l.Start),
+                LengthMinutes = l.LengthMinutes,
+            }).ToList(),
+        };
+
+        var stt = getStt();
+        var sttRefreshed = false;
+        var rateLimitRetries = 0;
+
+        while (true)
+        {
+            try
+            {
+                var newCourseId = await _reservanto.CreateCourseAsync(stt, createRequest, ct);
+                _logger.LogInformation(
+                    "Kurz \"{CourseName}\" zduplikován jako Id={NewCourseId} ({LectionCount} lekcí).",
+                    course.Name, newCourseId, createRequest.Lections.Count);
+                return new CreateCourseResult(course.Name!, true, newCourseId, null);
+            }
+            catch (ReservantoApiException ex) when (
+                ex.StatusCode == HttpStatusCode.TooManyRequests && rateLimitRetries < MaxRateLimitRetries)
+            {
+                // 429: exponential backoff 1s/2s/4s (spec 8).
+                rateLimitRetries++;
+                await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, rateLimitRetries - 1)), ct);
+            }
+            catch (ReservantoApiException ex) when (
+                ex.StatusCode == HttpStatusCode.Unauthorized && !sttRefreshed)
+            {
+                // STT vypršel uprostřed batche: regenerovat a retry once (spec 8).
+                sttRefreshed = true;
+                stt = await refreshSttAsync(stt);
+            }
+            catch (ReservantoApiException ex)
+            {
+                _logger.LogError(ex,
+                    "Vytvoření kurzu \"{CourseName}\" selhalo: {StatusCode} {ResponseBody}",
+                    course.Name, ex.StatusCode, ex.ResponseBody);
+                var error = ex.StatusCode == HttpStatusCode.Forbidden
+                    ? "Chybí oprávnění pro vytváření kurzů. Kontaktujte podporu Reservanta."
+                    : ex.Message;
+                return new CreateCourseResult(course.Name!, false, null, error);
+            }
+            catch (NotAuthenticatedException)
+            {
+                return new CreateCourseResult(course.Name!, false, null, "Přihlášení vypršelo - přihlaste se prosím znovu.");
+            }
         }
     }
 

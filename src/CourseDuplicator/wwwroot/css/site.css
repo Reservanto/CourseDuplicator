@@ -175,6 +175,34 @@ body {
     color: var(--color-error);
 }
 
+.duplicator__warning {
+    margin: 0 0 1rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #d97706;
+    border-radius: 0.25rem;
+    background: #fffbeb;
+    color: #92400e;
+}
+
+.result-list {
+    margin: 0 0 1.5rem;
+    padding: 0;
+    list-style: none;
+}
+
+.result-list__item {
+    padding: 0.375rem 0;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.result-list__item--success {
+    color: #15803d;
+}
+
+.result-list__item--error {
+    color: var(--color-error);
+}
+
 .duplicator__summary {
     margin: 1rem 0 0;
     color: var(--color-muted);

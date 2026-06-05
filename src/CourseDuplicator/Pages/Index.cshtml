@@ -117,6 +117,27 @@
         </div>
     </section>
 
+    <!-- Sekce F: Potvrzení a vytvoření (vždy viditelná na spodku, spec 5F) -->
+    <section class="duplicator__section" id="section-confirm">
+        <h2 class="duplicator__section-title">Vytvoření kurzů</h2>
+        <p class="duplicator__summary" id="create-summary">Bude vytvořeno 0 kurzů s celkem 0 lekcemi.</p>
+        <p class="duplicator__warning" id="create-warning" hidden></p>
+        <div class="duplicator__actions">
+            <button class="button" type="button" id="create-courses-btn" disabled>Vytvořit kurzy</button>
+            <span class="spinner" id="create-spinner" hidden></span>
+            <span class="hint" id="create-status"></span>
+        </div>
+        <p class="duplicator__error" id="create-error" hidden></p>
+    </section>
+
+    <!-- Sekce G: Výsledek -->
+    <section class="duplicator__section" id="section-result" hidden>
+        <h2 class="duplicator__section-title">Výsledek</h2>
+        <p class="duplicator__summary" id="result-summary"></p>
+        <ul class="result-list" id="result-list"></ul>
+        <button class="button" type="button" id="reset-btn">Vytvořit další</button>
+    </section>
+
 </div>
 
 @section Scripts {

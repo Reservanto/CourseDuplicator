@@ -52,6 +52,16 @@
     const registrationEndStrategy = el('registration-end-strategy');
     const registrationEndDaysField = el('registration-end-days-field');
     const registrationEndDays = el('registration-end-days');
+    const createSummary = el('create-summary');
+    const createWarning = el('create-warning');
+    const createButton = el('create-courses-btn');
+    const createSpinner = el('create-spinner');
+    const createStatus = el('create-status');
+    const createError = el('create-error');
+    const sectionResult = el('section-result');
+    const resultSummary = el('result-summary');
+    const resultList = el('result-list');
+    const resetButton = el('reset-btn');
 
     // ---- API helpers ----
     const antiforgeryToken = () =>
@@ -80,6 +90,14 @@
                 'RequestVerificationToken': antiforgeryToken(),
             },
             body: JSON.stringify({ segmentId, from, to }),
+        }),
+        createCourses: (body) => fetchJson('/?handler=CreateCourses', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': antiforgeryToken(),
+            },
+            body: JSON.stringify(body),
         }),
     };
 
@@ -233,6 +251,7 @@
         if (!hasInput) {
             effectiveFromEl.textContent = '–';
             computedToEl.textContent = '–';
+            updateCreateSection();
             return;
         }
 
@@ -245,6 +264,7 @@
         computedToEl.textContent = periodEnd ? formatDate(periodEnd) : '–';
 
         renderDetail();
+        updateCreateSection();
 
         // RegistrationEnd se v UI zatím per kurz nezobrazuje - kontrola přes konzoli.
         console.log('RegistrationEnd per kurz:', state.courses.map((c) => ({
@@ -540,6 +560,108 @@
         input.focus();
     };
 
+    // ---- Sekce F: potvrzení a vytvoření ----
+
+    /** Kurzy k vytvoření: ne-vyloučené, s aspoň jednou ne-vyloučenou lekcí se spočteným novým startem. */
+    const coursesToCreate = () => state.courses
+        .filter((c) => !c.isExcluded)
+        .map((course) => ({
+            course,
+            lections: course.lections.filter((l) => !l.isExcluded && lectionNewStart(l)),
+        }))
+        .filter((x) => x.lections.length > 0);
+
+    const updateCreateSection = () => {
+        const toCreate = coursesToCreate();
+        const lectionCount = toCreate.reduce((sum, x) => sum + x.lections.length, 0);
+        createSummary.textContent =
+            `Bude vytvořeno ${toCreate.length} kurzů s celkem ${lectionCount} lekcemi.`;
+        createButton.disabled = state.newFrom === null || toCreate.length === 0;
+
+        // Warning: nové datum OD nespadá za poslední lekci zdrojového období (nezablokuje).
+        let lastSource = null;
+        for (const course of state.courses) {
+            if (course.isExcluded) continue;
+            for (const lection of course.lections) {
+                if (lection.isExcluded) continue;
+                if (lastSource === null || lection.originalStart > lastSource) lastSource = lection.originalStart;
+            }
+        }
+        const overlaps = state.newFrom !== null && lastSource !== null && state.newFrom <= lastSource;
+        createWarning.hidden = !overlaps;
+        if (overlaps) {
+            createWarning.textContent =
+                `Pozor: nové datum OD (${formatDate(state.newFrom)}) nespadá za poslední lekci `
+                + `zdrojového období (${formatDate(lastSource)}). Nové kurzy se mohou překrývat se zdrojovými.`;
+        }
+    };
+
+    const buildCreateRequest = () => ({
+        globalSettings: {
+            singleLectionBookingEnabled: state.singleLectionBookingEnabled,
+            singleLectionBookingFrom: state.singleLectionBookingFrom
+                ? toUnix(state.singleLectionBookingFrom)
+                : null,
+        },
+        courses: coursesToCreate().map(({ course, lections }) => ({
+            name: course.name,
+            description: course.description,
+            segmentId: state.segmentId,
+            bookingResourceId: course.bookingResourceId,
+            bookingServiceId: course.bookingServiceId,
+            capacity: course.capacity,
+            priceWithVat: course.priceWithVat,
+            registrationEnd: toUnix(course.newRegistrationEnd),
+            calendarId: course.calendarId,
+            lections: lections.map((l) => ({
+                start: toUnix(lectionNewStart(l)),
+                lengthMinutes: lectionLengthMinutes(l),
+            })),
+        })),
+    });
+
+    const createCourses = async () => {
+        createError.hidden = true;
+        const body = buildCreateRequest();
+
+        createButton.disabled = true;
+        createSpinner.hidden = false;
+        createStatus.textContent = `Vytvářím ${body.courses.length} kurzů…`;
+        try {
+            const result = await api.createCourses(body);
+            renderResult(result.results);
+        } catch (error) {
+            createError.textContent = error.message;
+            createError.hidden = false;
+            createButton.disabled = false;
+        } finally {
+            createSpinner.hidden = true;
+            createStatus.textContent = '';
+        }
+    };
+
+    // ---- Sekce G: výsledek ----
+    const renderResult = (results) => {
+        const successCount = results.filter((r) => r.success).length;
+        resultSummary.textContent = `Vytvořeno ${successCount} z ${results.length} kurzů úspěšně.`;
+
+        resultList.innerHTML = '';
+        for (const result of results) {
+            const item = document.createElement('li');
+            item.className = 'result-list__item '
+                + (result.success ? 'result-list__item--success' : 'result-list__item--error');
+            item.textContent = result.success
+                ? `✓ ${result.originalName}`
+                : `✗ ${result.originalName} — ${result.error}`;
+            resultList.appendChild(item);
+        }
+
+        sectionResult.hidden = false;
+        sectionResult.scrollIntoView({ behavior: 'smooth' });
+        // Tlačítko zůstává disabled, ať se batch omylem nespustí podruhé;
+        // jakákoli změna vstupů ho přes updateCreateSection zase povolí.
+    };
+
     // ---- Sekce C + E: wiring ----
     newFromInput.addEventListener('change', () => {
         state.newFrom = parseDateInput(newFromInput, false);
@@ -580,5 +702,8 @@
     // ---- Init ----
     state.registrationEndDaysBefore = Number(registrationEndDays.value) || 0;
     loadButton.addEventListener('click', loadCourses);
+    createButton.addEventListener('click', createCourses);
+    // „Vytvořit další": aplikace je stateless, čistý reload vrátí prázdný stav i sekci A (spec 5G).
+    resetButton.addEventListener('click', () => window.location.reload());
     loadSegments();
 })();
