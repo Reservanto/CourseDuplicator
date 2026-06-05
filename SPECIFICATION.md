@@ -208,6 +208,15 @@ Zobrazí se, jakmile je v sekci B aspoň jeden kurz.
 - Read-only zobrazení:
   - **Efektivní datum OD** (při strategii „zachovat dny v týdnu" se může lišit od zadaného)
   - **Vypočtené datum DO** = maximum z nových datumů poslední lekce ze všech ne-vyloučených kurzů.
+- **Validace: nové datum OD musí být v budoucnu** (> now). Datum v minulosti zobrazí chybu
+  a chová se jako nezadané (sekce D/E se skryjí, tlačítko „Vytvořit kurzy" je disabled).
+  Date input má `min` nastavené na zítřek.
+- **Kontrola obsazenosti cílového období:** po zadání/změně nového data OD (a při každém
+  přepočtu, který změní vypočtené DO - strategie, pin, vyloučení) frontend zavolá `CheckPeriod`
+  (viz 7.7) pro interval efektivní OD - vypočtené DO. Výsledek se zobrazí pod vypočtenými daty:
+  zeleně „V novém období zatím žádné kurzy nejsou.", oranžově „Pozor: v novém období již existuje
+  X kurzů (názvy, …)". Kontrola je informativní - vytvoření neblokuje. Volání je debounced
+  (500 ms) se zahazováním zastaralých odpovědí.
 
 ### Sekce D: Detail kurzů s novými datumy
 
@@ -322,6 +331,7 @@ Aplikace má jednu Razor Page (`Pages/Index.cshtml`) s těmito handlery:
 |---|---|---|
 | `OnGetSegmentsAsync` | `GET /?handler=Segments` | `POST /v1/Segment/GetList` |
 | `OnPostLoadCoursesAsync(LoadRequest)` | `POST /?handler=LoadCourses` | `POST /v1/Course/GetList` (po měsíčních blocích) + per kurz `POST /v1/Course/Get` |
+| `OnPostCheckPeriodAsync(CheckPeriodRequest)` | `POST /?handler=CheckPeriod` | `POST /v1/Course/GetList` (po měsíčních blocích) |
 | `OnPostCreateCoursesAsync(CreateRequest)` | `POST /?handler=CreateCourses` | Pro každý kurz `POST /v1/Course/Create` |
 
 Request/response body je JSON. Antiforgery token je vyžadován na všech POST handlerech a posílá se z JS v hlavičce `RequestVerificationToken`.
@@ -411,6 +421,15 @@ Z CourseApiModel (load):                  Do CourseCreateRequest (create):
 
 **`CalendarId`** není v `CourseApiModel` přímo, ale **JE v každém `AppointmentClassApiModel`** (potvrzeno v API yaml řádek 4732). Backend přečte `CalendarId` z prvního appointmentu kurzu a použije pro nový kurz. Pokud kurz nemá žádné appointmenty (krajní případ), nastav null - Reservanto použije výchozí kalendář.
 
+### 7.7 Kontrola obsazenosti cílového období (`CheckPeriod`)
+
+Request: `{ segmentId, from, to }` (UnixTimestamp). Backend načte kurzy přes blokový
+`Course/GetList` (stejně jako 7.3) a vrátí kurzy, které se s obdobím **protínají**
+(`StartDate <= to AND EndDate >= from`) - na rozdíl od `LoadCourses` se nepožaduje plné
+spadnutí do období (kurz přesahující hranici se počítá taky).
+
+Response: `{ count, names }`, kde `names` je max prvních 5 názvů kurzů seřazených podle začátku.
+
 ## 8. Edge cases a chyby
 
 - **Kurz s 0 lekcemi po vyloučení uživatelem** → tlačítko „Vytvořit kurzy" musí kurz přeskočit, jinak Reservanto API zřejmě vrátí chybu.
@@ -426,8 +445,13 @@ Z CourseApiModel (load):                  Do CourseCreateRequest (create):
 - Časová zóna: **Europe/Prague**. Backend pracuje s `DateTimeOffset` v UTC, frontend zobrazuje v lokálním čase. UnixTimeStamp z Reservanta je v UTC.
 - Validace v UI:
   - Datum OD ≤ datum DO
-  - Nové datum OD > dnes (lze relaxovat na warning)
-  - Nové datum OD > datum DO zdrojového období (lze relaxovat na warning, nebo i ne)
+  - Nové datum OD musí být v budoucnu (> now) - blokující chyba (viz sekce C)
+  - Nové datum OD > poslední lekce zdrojového období - jen warning v sekci F, neblokuje
+- **Uchování naposledy zadaných hodnot:** cookie `cd_prefs` (JSON, expirace 30 dnů,
+  `SameSite=Lax`) ukládá segment, datum OD/DO, nové datum OD, strategii mapování dne v týdnu
+  a globální nastavení sekce E. Ukládá se při změně příslušné kontrolky a při „Načíst kurzy";
+  při další návštěvě se hodnoty předvyplní. Nové datum OD z cookie se obnoví jen pokud je
+  stále v budoucnu; segment jen pokud v dropdownu stále existuje.
 - Responzivita: alespoň desktop a tablet. Mobile není priorita.
 
 ## 10. Bezpečnost
