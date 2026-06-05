@@ -136,6 +136,49 @@ public class IndexModel : PageModel
         }
     }
 
+    /// <summary>Request body POST /?handler=CheckPeriod. From/To jsou UnixTimestamp (UTC sekundy).</summary>
+    public record CheckPeriodRequest(int SegmentId, long From, long To);
+
+    /// <summary>
+    /// POST /?handler=CheckPeriod - kontrola, zda v cílovém období již existují kurzy.
+    /// Na rozdíl od LoadCourses stačí průnik intervalů (kurz přesahující hranici období se počítá taky).
+    /// </summary>
+    public async Task<IActionResult> OnPostCheckPeriodAsync([FromBody] CheckPeriodRequest request, CancellationToken ct)
+    {
+        if (request is null || request.SegmentId <= 0 || request.From >= request.To)
+            return ApiError("Neplatné zadání kontroly období.", StatusCodes.Status400BadRequest);
+
+        var from = DateTimeOffset.FromUnixTimeSeconds(request.From);
+        var to = DateTimeOffset.FromUnixTimeSeconds(request.To);
+
+        try
+        {
+            var stt = await _authService.GetValidShortTimeTokenAsync(ct);
+            var courses = await _reservanto.GetCourseListAsync(
+                stt, request.SegmentId, from.UtcDateTime, to.UtcDateTime, ct);
+
+            var overlapping = courses
+                .Where(c => c.StartDate <= to && c.EndDate >= from)
+                .OrderBy(c => c.StartDate)
+                .ToList();
+
+            return new JsonResult(new
+            {
+                count = overlapping.Count,
+                names = overlapping.Take(5).Select(c => c.Name),
+            });
+        }
+        catch (NotAuthenticatedException)
+        {
+            return Unauthorized();
+        }
+        catch (ReservantoApiException ex)
+        {
+            _logger.LogError(ex, "Kontrola období selhala: {StatusCode} {ResponseBody}", ex.StatusCode, ex.ResponseBody);
+            return ApiError("Kontrolu kurzů v novém období se nepodařilo provést.");
+        }
+    }
+
     /// <summary>Max souběžných volání Course/Create (spec 5F).</summary>
     private const int MaxParallelCourseCreates = 3;
 

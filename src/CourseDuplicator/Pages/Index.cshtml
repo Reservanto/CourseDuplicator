@@ -54,6 +54,7 @@
             <label class="form-field__label" for="new-from">Nové datum OD</label>
             <input class="form-field__input" type="date" id="new-from" />
         </div>
+        <p class="duplicator__error" id="target-error" hidden></p>
 
         <fieldset class="duplicator__radios">
             <legend class="duplicator__radios-legend">Strategie mapování dne v týdnu</legend>
@@ -79,6 +80,8 @@
                 <dd class="duplicator__computed-value" id="computed-to">–</dd>
             </div>
         </dl>
+
+        <p class="duplicator__period-check" id="period-check" hidden></p>
     </section>
 
     <!-- Sekce D: Detail kurzů s novými datumy -->

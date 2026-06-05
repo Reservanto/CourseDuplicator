@@ -346,6 +346,27 @@ body {
     cursor: pointer;
 }
 
+.duplicator__period-check {
+    margin: 0.75rem 0 0;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.25rem;
+    background: var(--color-surface);
+    color: var(--color-muted);
+}
+
+.duplicator__period-check--ok {
+    border-color: #15803d;
+    background: #f0fdf4;
+    color: #15803d;
+}
+
+.duplicator__period-check--warning {
+    border-color: #d97706;
+    background: #fffbeb;
+    color: #92400e;
+}
+
 /* ---- Sekce D: subtabulka lekcí ---- */
 
 .course-row__lections-cell {

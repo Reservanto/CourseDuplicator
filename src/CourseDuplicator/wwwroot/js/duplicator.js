@@ -41,8 +41,10 @@
     const courseSummary = el('course-summary');
     const sectionTarget = el('section-target');
     const newFromInput = el('new-from');
+    const targetError = el('target-error');
     const effectiveFromEl = el('effective-from');
     const computedToEl = el('computed-to');
+    const periodCheck = el('period-check');
     const sectionDetail = el('section-detail');
     const courseDetailList = el('course-detail-list');
     const sectionSettings = el('section-settings');
@@ -91,6 +93,14 @@
             },
             body: JSON.stringify({ segmentId, from, to }),
         }),
+        checkPeriod: (segmentId, from, to) => fetchJson('/?handler=CheckPeriod', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': antiforgeryToken(),
+            },
+            body: JSON.stringify({ segmentId, from, to }),
+        }),
         createCourses: (body) => fetchJson('/?handler=CreateCourses', {
             method: 'POST',
             headers: {
@@ -131,6 +141,81 @@
     const lectionNewStart = (lection) =>
         (lection.isPinned ? lection.pinnedNewStart : lection.newStart) ?? null;
 
+    // ---- Uchování naposledy zadaných hodnot (cookie, 30 dnů) ----
+    const PREFS_COOKIE = 'cd_prefs';
+    const PREFS_MAX_AGE = 30 * 24 * 3600;
+
+    const savePrefs = () => {
+        const prefs = {
+            segmentId: state.segmentId,
+            sourceFrom: sourceFromInput.value || null,
+            sourceTo: sourceToInput.value || null,
+            newFrom: newFromInput.value || null,
+            shiftStrategy: state.shiftStrategy,
+            singleLectionBookingEnabled: state.singleLectionBookingEnabled,
+            singleLectionBookingFrom: singleLectionFrom.value || null,
+            registrationEndStrategy: state.registrationEndStrategy,
+            registrationEndDaysBefore: state.registrationEndDaysBefore,
+        };
+        document.cookie = `${PREFS_COOKIE}=${encodeURIComponent(JSON.stringify(prefs))}`
+            + `; max-age=${PREFS_MAX_AGE}; path=/; SameSite=Lax`;
+    };
+
+    const loadPrefs = () => {
+        const entry = document.cookie.split('; ').find((c) => c.startsWith(`${PREFS_COOKIE}=`));
+        if (!entry) return null;
+        try {
+            return JSON.parse(decodeURIComponent(entry.slice(PREFS_COOKIE.length + 1)));
+        } catch {
+            return null;
+        }
+    };
+
+    /** Předvyplní inputy a state z cookie. Segment se aplikuje až po načtení dropdownu. */
+    const applyPrefs = (prefs) => {
+        if (!prefs) return;
+
+        if (prefs.sourceFrom) sourceFromInput.value = prefs.sourceFrom;
+        if (prefs.sourceTo) sourceToInput.value = prefs.sourceTo;
+
+        // Nové datum OD jen pokud je stále v budoucnu (pravidlo "nové OD > now").
+        if (prefs.newFrom) {
+            newFromInput.value = prefs.newFrom;
+            const restored = parseDateInput(newFromInput, false);
+            if (restored && restored > new Date()) {
+                state.newFrom = restored;
+            } else {
+                newFromInput.value = '';
+            }
+        }
+
+        if (prefs.shiftStrategy === 'weekday' || prefs.shiftStrategy === 'exact') {
+            state.shiftStrategy = prefs.shiftStrategy;
+            const radio = document.querySelector(`input[name="shift-strategy"][value="${prefs.shiftStrategy}"]`);
+            if (radio) radio.checked = true;
+        }
+
+        if (typeof prefs.singleLectionBookingEnabled === 'boolean') {
+            state.singleLectionBookingEnabled = prefs.singleLectionBookingEnabled;
+            singleLectionEnabled.checked = prefs.singleLectionBookingEnabled;
+            singleLectionFromField.hidden = !prefs.singleLectionBookingEnabled;
+        }
+        if (state.singleLectionBookingEnabled && prefs.singleLectionBookingFrom) {
+            singleLectionFrom.value = prefs.singleLectionBookingFrom;
+            state.singleLectionBookingFrom = parseDateInput(singleLectionFrom, false);
+        }
+
+        if (['keepOffset', 'atStart', 'daysBefore'].includes(prefs.registrationEndStrategy)) {
+            state.registrationEndStrategy = prefs.registrationEndStrategy;
+            registrationEndStrategy.value = prefs.registrationEndStrategy;
+            registrationEndDaysField.hidden = prefs.registrationEndStrategy !== 'daysBefore';
+        }
+        if (Number.isFinite(prefs.registrationEndDaysBefore) && prefs.registrationEndDaysBefore >= 0) {
+            state.registrationEndDaysBefore = prefs.registrationEndDaysBefore;
+            registrationEndDays.value = String(prefs.registrationEndDaysBefore);
+        }
+    };
+
     const lectionLengthMinutes = (lection) =>
         Math.round((lection.originalEnd - lection.originalStart) / 60000);
 
@@ -163,6 +248,12 @@
                 segmentSelect.appendChild(option);
             }
             segmentSelect.disabled = false;
+
+            // Předvybrat naposledy použitý segment z cookie, pokud stále existuje.
+            if (restoredPrefs?.segmentId
+                && [...segmentSelect.options].some((o) => Number(o.value) === restoredPrefs.segmentId)) {
+                segmentSelect.value = String(restoredPrefs.segmentId);
+            }
             state.segmentId = Number(segmentSelect.value);
 
             // Jediný segment: automaticky vybrán, dropdown sbalený na prostý text (spec 5A).
@@ -203,6 +294,7 @@
             return;
         }
 
+        savePrefs();
         setLoading(true, 'Načítám kurzy…');
         try {
             const result = await api.loadCourses(
@@ -251,6 +343,7 @@
         if (!hasInput) {
             effectiveFromEl.textContent = '–';
             computedToEl.textContent = '–';
+            schedulePeriodCheck(null, null);
             updateCreateSection();
             return;
         }
@@ -263,6 +356,8 @@
         const periodEnd = Mapping.calculatePeriodEndDate(state.courses);
         computedToEl.textContent = periodEnd ? formatDate(periodEnd) : '–';
 
+        schedulePeriodCheck(effectiveNewFrom, periodEnd);
+
         renderDetail();
         updateCreateSection();
 
@@ -271,6 +366,46 @@
             kurz: c.name,
             registrationEnd: c.newRegistrationEnd ? formatDateTime(c.newRegistrationEnd) : null,
         })));
+    };
+
+    // ---- Kontrola, zda v novém období již existují kurzy ----
+    let periodCheckTimer = null;
+    let periodCheckSeq = 0;
+
+    /** Naplánuje kontrolu nového období (debounce 500 ms; null = skrýt). */
+    const schedulePeriodCheck = (from, to) => {
+        clearTimeout(periodCheckTimer);
+        if (!from || !to) {
+            periodCheckSeq++;
+            periodCheck.hidden = true;
+            return;
+        }
+        periodCheckTimer = setTimeout(() => checkNewPeriod(from, to), 500);
+    };
+
+    const checkNewPeriod = async (from, to) => {
+        const seq = ++periodCheckSeq;
+        periodCheck.className = 'duplicator__period-check';
+        periodCheck.textContent = 'Kontroluji, zda v novém období již existují kurzy…';
+        periodCheck.hidden = false;
+        try {
+            const result = await api.checkPeriod(state.segmentId, toUnix(from), toUnix(to));
+            if (seq !== periodCheckSeq) return; // mezitím přišel novější požadavek
+            if (result.count > 0) {
+                const names = result.names.join(', ');
+                const ellipsis = result.count > result.names.length ? ', …' : '';
+                periodCheck.classList.add('duplicator__period-check--warning');
+                periodCheck.textContent =
+                    `Pozor: v novém období již existuje ${result.count} kurzů (${names}${ellipsis}).`;
+            } else {
+                periodCheck.classList.add('duplicator__period-check--ok');
+                periodCheck.textContent = 'V novém období zatím žádné kurzy nejsou.';
+            }
+        } catch (error) {
+            if (seq !== periodCheckSeq) return;
+            periodCheck.classList.add('duplicator__period-check--warning');
+            periodCheck.textContent = `Kontrolu nového období se nepodařilo provést: ${error.message}`;
+        }
     };
 
     // ---- Sekce B: render přehledu ----
@@ -663,14 +798,31 @@
     };
 
     // ---- Sekce C + E: wiring ----
+    segmentSelect.addEventListener('change', () => {
+        state.segmentId = Number(segmentSelect.value);
+        savePrefs();
+    });
+
     newFromInput.addEventListener('change', () => {
-        state.newFrom = parseDateInput(newFromInput, false);
+        const selected = parseDateInput(newFromInput, false);
+
+        // Nové datum OD musí být v budoucnu - neplatná hodnota se chová jako nezadaná.
+        if (selected && selected <= new Date()) {
+            targetError.textContent = 'Nové datum OD musí být v budoucnu.';
+            targetError.hidden = false;
+            state.newFrom = null;
+        } else {
+            targetError.hidden = true;
+            state.newFrom = selected;
+        }
+        savePrefs();
         recalculate();
     });
 
     for (const radio of document.querySelectorAll('input[name="shift-strategy"]')) {
         radio.addEventListener('change', () => {
             state.shiftStrategy = radio.value;
+            savePrefs();
             recalculate();
         });
     }
@@ -682,24 +834,36 @@
             state.singleLectionBookingFrom = null;
             singleLectionFrom.value = '';
         }
+        savePrefs();
     });
 
     singleLectionFrom.addEventListener('change', () => {
         state.singleLectionBookingFrom = parseDateInput(singleLectionFrom, false);
+        savePrefs();
     });
 
     registrationEndStrategy.addEventListener('change', () => {
         state.registrationEndStrategy = registrationEndStrategy.value;
         registrationEndDaysField.hidden = registrationEndStrategy.value !== 'daysBefore';
+        savePrefs();
         recalculate();
     });
 
     registrationEndDays.addEventListener('input', () => {
         state.registrationEndDaysBefore = Math.max(0, Number(registrationEndDays.value) || 0);
+        savePrefs();
         recalculate();
     });
 
     // ---- Init ----
+    // Nové datum OD musí být v budoucnu - min je zítřek (date input dává půlnoc zvoleného dne).
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    newFromInput.min = `${tomorrow.getFullYear()}-${pad2(tomorrow.getMonth() + 1)}-${pad2(tomorrow.getDate())}`;
+
+    const restoredPrefs = loadPrefs();
+    applyPrefs(restoredPrefs);
+
     state.registrationEndDaysBefore = Number(registrationEndDays.value) || 0;
     loadButton.addEventListener('click', loadCourses);
     createButton.addEventListener('click', createCourses);
