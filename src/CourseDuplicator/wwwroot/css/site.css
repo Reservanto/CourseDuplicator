@@ -252,3 +252,122 @@ body {
     border-color: var(--color-error);
     color: var(--color-error);
 }
+
+.course-row__detail-toggle {
+    padding: 0.125rem 0.5rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.25rem;
+    background: transparent;
+    color: var(--color-accent);
+    font: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.course-row__detail-toggle:hover {
+    border-color: var(--color-accent);
+}
+
+/* ---- Sekce C: cílové období ---- */
+
+.duplicator__radios {
+    margin: 0 0 1rem;
+    padding: 0;
+    border: none;
+}
+
+.duplicator__radios-legend {
+    padding: 0;
+    margin-bottom: 0.25rem;
+    font-weight: 600;
+}
+
+.duplicator__radio {
+    display: block;
+    margin-bottom: 0.25rem;
+    cursor: pointer;
+}
+
+.duplicator__computed {
+    display: flex;
+    gap: 3rem;
+    margin: 0;
+    padding: 0.75rem 1rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.25rem;
+}
+
+.duplicator__computed-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.duplicator__computed-label {
+    font-size: 0.875rem;
+    color: var(--color-muted);
+}
+
+.duplicator__computed-value {
+    margin: 0;
+    font-weight: 600;
+}
+
+.duplicator__checkbox {
+    cursor: pointer;
+}
+
+/* ---- Sekce D: subtabulka lekcí ---- */
+
+.course-row__lections-cell {
+    padding: 0.5rem 0.75rem 1rem 2rem;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-surface);
+}
+
+.lection-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.lection-row__cell {
+    padding: 0.375rem 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.9375rem;
+}
+
+.lection-row__cell--action {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.lection-row--excluded .lection-row__cell {
+    color: var(--color-muted);
+    text-decoration: line-through;
+}
+
+.lection-row--excluded .lection-row__cell--action {
+    text-decoration: none;
+}
+
+.lection-row__new--editable {
+    cursor: pointer;
+}
+
+.lection-row__new--editable:hover {
+    color: var(--color-accent);
+    text-decoration: underline dotted;
+}
+
+.lection-row__pin {
+    cursor: default;
+}
+
+.lection-row__edit-input {
+    padding: 0.125rem 0.25rem;
+    border: 1px solid var(--color-accent);
+    border-radius: 0.25rem;
+    font: inherit;
+    font-size: 0.9375rem;
+}

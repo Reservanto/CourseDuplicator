@@ -46,8 +46,80 @@
         <p class="duplicator__summary" id="course-summary"></p>
     </section>
 
+    <!-- Sekce C: Cílové období -->
+    <section class="duplicator__section" id="section-target" hidden>
+        <h2 class="duplicator__section-title">Cílové období</h2>
+
+        <div class="form-field">
+            <label class="form-field__label" for="new-from">Nové datum OD</label>
+            <input class="form-field__input" type="date" id="new-from" />
+        </div>
+
+        <fieldset class="duplicator__radios">
+            <legend class="duplicator__radios-legend">Strategie mapování dne v týdnu</legend>
+            <label class="duplicator__radio">
+                <input type="radio" name="shift-strategy" value="weekday" checked />
+                Zachovat dny v týdnu
+                <span class="hint">(posun zaokrouhlený na celé týdny, efektivní OD se může lišit o ±3 dny)</span>
+            </label>
+            <label class="duplicator__radio">
+                <input type="radio" name="shift-strategy" value="exact" />
+                Přesný posun
+                <span class="hint">(dny v týdnu se posunou)</span>
+            </label>
+        </fieldset>
+
+        <dl class="duplicator__computed">
+            <div class="duplicator__computed-item">
+                <dt class="duplicator__computed-label">Efektivní datum OD</dt>
+                <dd class="duplicator__computed-value" id="effective-from">–</dd>
+            </div>
+            <div class="duplicator__computed-item">
+                <dt class="duplicator__computed-label">Vypočtené datum DO</dt>
+                <dd class="duplicator__computed-value" id="computed-to">–</dd>
+            </div>
+        </dl>
+    </section>
+
+    <!-- Sekce D: Detail kurzů s novými datumy -->
+    <section class="duplicator__section" id="section-detail" hidden>
+        <h2 class="duplicator__section-title">Kurzy s novými datumy</h2>
+        <div id="course-detail-list"></div>
+    </section>
+
+    <!-- Sekce E: Globální nastavení nových kurzů -->
+    <section class="duplicator__section" id="section-settings" hidden>
+        <h2 class="duplicator__section-title">Globální nastavení nových kurzů</h2>
+
+        <div class="form-field">
+            <label class="duplicator__checkbox">
+                <input type="checkbox" id="single-lection-enabled" />
+                Povolit rezervace jednotlivých lekcí
+            </label>
+        </div>
+        <div class="form-field" id="single-lection-from-field" hidden>
+            <label class="form-field__label" for="single-lection-from">Povolit rezervace jednotlivých lekcí od</label>
+            <input class="form-field__input" type="date" id="single-lection-from" />
+            <p class="hint">Prázdné = od začátku.</p>
+        </div>
+
+        <div class="form-field">
+            <label class="form-field__label" for="registration-end-strategy">Konec registrace</label>
+            <select class="form-field__input" id="registration-end-strategy">
+                <option value="keepOffset" selected>Zachovat offset</option>
+                <option value="atStart">Začátek první lekce</option>
+                <option value="daysBefore">N dní před začátkem</option>
+            </select>
+        </div>
+        <div class="form-field" id="registration-end-days-field" hidden>
+            <label class="form-field__label" for="registration-end-days">Počet dní před začátkem</label>
+            <input class="form-field__input" type="number" id="registration-end-days" min="0" value="3" />
+        </div>
+    </section>
+
 </div>
 
 @section Scripts {
+    <script src="~/js/mapping.js" asp-append-version="true"></script>
     <script src="~/js/duplicator.js" asp-append-version="true"></script>
 }
