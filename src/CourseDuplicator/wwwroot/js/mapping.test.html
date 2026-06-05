@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="utf-8" />
+    <title>mapping.js – testy</title>
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.6; }
+        .test { display: block; }
+        .test--pass { color: #15803d; }
+        .test--fail { color: #b91c1c; font-weight: 600; }
+        .summary { margin-top: 1rem; font-size: 1.25rem; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <h1>Testy mapping.js</h1>
+    <div id="results"></div>
+    <div id="summary" class="summary"></div>
+
+    <script src="mapping.js"></script>
+    <script>
+        const M = window.CourseDuplicator.Mapping;
+        const results = document.getElementById('results');
+        let passed = 0, failed = 0;
+
+        const fmt = (value) => value instanceof Date
+            ? `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')} ${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`
+            : String(value);
+
+        const test = (name, actual, expected) => {
+            const ok = fmt(actual) === fmt(expected);
+            ok ? passed++ : failed++;
+            const span = document.createElement('span');
+            span.className = `test ${ok ? 'test--pass' : 'test--fail'}`;
+            span.textContent = ok
+                ? `✓ ${name}`
+                : `✗ ${name} — očekáváno: ${fmt(expected)}, dostal: ${fmt(actual)}`;
+            results.appendChild(span);
+            console.log(span.textContent);
+        };
+
+        // Pomocný konstruktor lekce / kurzu pro testy
+        const lection = (originalStart, originalEnd, extra = {}) =>
+            ({ originalStart, originalEnd, isExcluded: false, isPinned: false, pinnedNewStart: null, ...extra });
+
+        // ---- calculateShift ----
+
+        // Po 5. 1. 2026 je pondělí. 7. 4. 2026 je úterý (92 dní) -> weekday zaokrouhlí na 91 (13 týdnů).
+        {
+            const shift = M.calculateShift(new Date(2026, 0, 5), new Date(2026, 3, 7), 'weekday');
+            test("weekday: Po->Út se zaokrouhlí na celé týdny (shiftDays)", shift.shiftDays, 91);
+            test("weekday: efektivní nové OD padne zpět na pondělí", shift.effectiveNewFrom, new Date(2026, 3, 6));
+            test("weekday: efektivní nové OD je pondělí (getDay)", shift.effectiveNewFrom.getDay(), 1);
+        }
+
+        // Přesný násobek 7 dnů zůstává beze změny.
+        test("weekday: posun o přesné 4 týdny zůstává 28 dní",
+            M.calculateShift(new Date(2026, 0, 5), new Date(2026, 1, 2), 'weekday').shiftDays, 28);
+
+        // exact: Po -> Út = posun o 1 den, dny v týdnu se nezachovávají.
+        {
+            const shift = M.calculateShift(new Date(2026, 0, 5), new Date(2026, 0, 6), 'exact');
+            test("exact: Po->Út posune přesně o 1 den", shift.shiftDays, 1);
+            test("exact: efektivní nové OD je úterý", shift.effectiveNewFrom, new Date(2026, 0, 6));
+        }
+
+        // ---- mapLectionDate ----
+
+        test("mapLectionDate: zachovává hodinu a minutu",
+            M.mapLectionDate(new Date(2026, 0, 7, 18, 30), 91), new Date(2026, 3, 8, 18, 30));
+
+        test("mapLectionDate: funguje i záporný posun",
+            M.mapLectionDate(new Date(2026, 3, 8, 9, 15), -7), new Date(2026, 3, 1, 9, 15));
+
+        // Posun přes přechod na letní čas (březen) musí zachovat zobrazovanou hodinu.
+        test("mapLectionDate: zachovává hodinu přes přechod DST",
+            M.mapLectionDate(new Date(2026, 2, 23, 18, 0), 14).getHours(), 18);
+
+        // ---- calculateRegistrationEnd ----
+
+        const course = {
+            originalStartDate: new Date(2026, 0, 5, 18, 0),
+            originalRegistrationEnd: new Date(2026, 0, 1, 12, 0), // offset 4 dny 6 hodin před startem
+        };
+        const newCourseStart = new Date(2026, 3, 6, 18, 0);
+
+        test("registrationEnd keepOffset: zachová původní offset",
+            M.calculateRegistrationEnd(course, newCourseStart, 'keepOffset'), new Date(2026, 3, 2, 12, 0));
+
+        test("registrationEnd atStart: rovná se startu první lekce",
+            M.calculateRegistrationEnd(course, newCourseStart, 'atStart'), newCourseStart);
+
+        test("registrationEnd daysBefore: N=3 dny před startem",
+            M.calculateRegistrationEnd(course, newCourseStart, 'daysBefore', 3), new Date(2026, 3, 3, 18, 0));
+
+        // ---- calculatePeriodEndDate ----
+
+        {
+            const courses = [
+                {
+                    isExcluded: false,
+                    lections: [
+                        // auto lekce: konec 2026-04-06 19:00
+                        lection(new Date(2026, 0, 5, 18, 0), new Date(2026, 0, 5, 19, 0), { newStart: new Date(2026, 3, 6, 18, 0) }),
+                        // pinned lekce (90 min): konec 2026-05-01 11:30 -> maximum
+                        lection(new Date(2026, 0, 12, 10, 0), new Date(2026, 0, 12, 11, 30),
+                            { isPinned: true, pinnedNewStart: new Date(2026, 4, 1, 10, 0), newStart: new Date(2026, 3, 13, 10, 0) }),
+                        // vyloučená lekce s pozdějším datem - musí se ignorovat
+                        lection(new Date(2026, 0, 19, 10, 0), new Date(2026, 0, 19, 11, 0),
+                            { isExcluded: true, newStart: new Date(2026, 11, 31, 10, 0) }),
+                    ],
+                },
+                {
+                    // vyloučený kurz s nejpozdějším datem - musí se ignorovat celý
+                    isExcluded: true,
+                    lections: [lection(new Date(2026, 0, 5, 8, 0), new Date(2026, 0, 5, 9, 0), { newStart: new Date(2027, 0, 1, 8, 0) })],
+                },
+            ];
+
+            test("periodEnd: maximum přes auto i pinned lekce (pinned vyhrává, vč. délky lekce)",
+                M.calculatePeriodEndDate(courses), new Date(2026, 4, 1, 11, 30));
+        }
+
+        test("periodEnd: vyloučené lekce a kurzy ohnuly výsledek na null, když nezbývá nic",
+            M.calculatePeriodEndDate([{ isExcluded: false, lections: [lection(new Date(2026, 0, 5), new Date(2026, 0, 5), { isExcluded: true, newStart: new Date(2026, 5, 1) })] }]),
+            null);
+
+        // ---- applyMappingToState ----
+
+        {
+            const pinnedDate = new Date(2026, 4, 1, 10, 0);
+            const state = {
+                sourceFrom: new Date(2026, 0, 5),
+                newFrom: new Date(2026, 3, 7), // úterý -> weekday zaokrouhlí na posun 91 dnů
+                shiftStrategy: 'weekday',
+                registrationEndStrategy: 'keepOffset',
+                registrationEndDaysBefore: 0,
+                courses: [
+                    {
+                        isExcluded: false,
+                        originalStartDate: new Date(2026, 0, 5, 18, 0),
+                        originalRegistrationEnd: new Date(2026, 0, 4, 18, 0), // offset 1 den
+                        lections: [
+                            lection(new Date(2026, 0, 5, 18, 0), new Date(2026, 0, 5, 19, 0)),
+                            lection(new Date(2026, 0, 12, 18, 0), new Date(2026, 0, 12, 19, 0),
+                                { isPinned: true, pinnedNewStart: pinnedDate, newStart: new Date(1999, 0, 1) }),
+                        ],
+                    },
+                ],
+            };
+
+            M.applyMappingToState(state);
+            const [auto, pinned] = state.courses[0].lections;
+
+            test("applyMapping: auto lekce dostane newStart posunutý o 91 dnů",
+                auto.newStart, new Date(2026, 3, 6, 18, 0));
+            test("applyMapping: pinned lekce se nepřepisuje (newStart zůstává)",
+                pinned.newStart, new Date(1999, 0, 1));
+            test("applyMapping: pinnedNewStart zůstává beze změny",
+                pinned.pinnedNewStart, pinnedDate);
+            test("applyMapping: newRegistrationEnd z minima lekcí (keepOffset, 1 den před)",
+                state.courses[0].newRegistrationEnd, new Date(2026, 3, 5, 18, 0));
+
+            // newFrom = null -> přepočet je no-op
+            const untouched = { sourceFrom: new Date(2026, 0, 5), newFrom: null, shiftStrategy: 'exact', courses: [] };
+            test("applyMapping: bez newFrom je no-op (vrací state)", M.applyMappingToState(untouched), untouched);
+        }
+
+        // ---- souhrn ----
+        const summary = document.getElementById('summary');
+        summary.textContent = failed === 0
+            ? `Všech ${passed} testů prošlo ✓`
+            : `${failed} z ${passed + failed} testů selhalo ✗`;
+        summary.style.color = failed === 0 ? '#15803d' : '#b91c1c';
+        console.log(summary.textContent);
+    </script>
+</body>
+</html>
