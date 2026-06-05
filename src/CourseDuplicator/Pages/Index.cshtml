@@ -1,8 +1,53 @@
 @page
 @model IndexModel
 @{
-    ViewData["Title"] = "Úvod";
+    ViewData["Title"] = "Duplikace kurzů";
 }
 
-<p>Hromadná duplikace kurzů Reservanto z jednoho období do druhého.</p>
-<p class="hint">UI duplikace bude doplněno v další fázi. Pro test API klienta použijte <a asp-page="/ApiTest">testovací stránku</a>.</p>
+@Html.AntiForgeryToken()
+
+<div class="duplicator">
+
+    <!-- Sekce A: Volba zdrojového období -->
+    <section class="duplicator__section" id="section-source">
+        <h2 class="duplicator__section-title">Zdrojové období</h2>
+
+        <div class="form-field" id="segment-field">
+            <label class="form-field__label" for="segment-select">Segment</label>
+            <select class="form-field__input" id="segment-select" disabled>
+                <option value="">Načítám segmenty…</option>
+            </select>
+        </div>
+        <p class="hint duplicator__single-segment" id="segment-single" hidden></p>
+
+        <div class="duplicator__date-range">
+            <div class="form-field">
+                <label class="form-field__label" for="source-from">Datum OD</label>
+                <input class="form-field__input" type="date" id="source-from" />
+            </div>
+            <div class="form-field">
+                <label class="form-field__label" for="source-to">Datum DO</label>
+                <input class="form-field__input" type="date" id="source-to" />
+            </div>
+        </div>
+
+        <div class="duplicator__actions">
+            <button class="button" type="button" id="load-courses-btn">Načíst kurzy</button>
+            <span class="spinner" id="load-spinner" hidden></span>
+            <span class="hint" id="load-status"></span>
+        </div>
+        <p class="duplicator__error" id="load-error" hidden></p>
+    </section>
+
+    <!-- Sekce B: Přehled načtených kurzů -->
+    <section class="duplicator__section" id="section-overview" hidden>
+        <h2 class="duplicator__section-title">Načtené kurzy</h2>
+        <div id="course-list"></div>
+        <p class="duplicator__summary" id="course-summary"></p>
+    </section>
+
+</div>
+
+@section Scripts {
+    <script src="~/js/duplicator.js" asp-append-version="true"></script>
+}

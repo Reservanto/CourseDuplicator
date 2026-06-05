@@ -139,3 +139,116 @@ body {
     color: var(--color-muted);
     font-size: 0.875rem;
 }
+
+/* ---- Duplikátor ---- */
+
+.duplicator__section {
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+}
+
+.duplicator__section-title {
+    margin: 0 0 1rem;
+    font-size: 1.125rem;
+}
+
+.duplicator__date-range {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.duplicator__date-range .form-field__input {
+    min-width: 12rem;
+}
+
+.duplicator__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.duplicator__error {
+    margin: 0.75rem 0 0;
+    color: var(--color-error);
+}
+
+.duplicator__summary {
+    margin: 1rem 0 0;
+    color: var(--color-muted);
+}
+
+.duplicator__empty {
+    color: var(--color-muted);
+    font-style: italic;
+}
+
+.duplicator__single-segment {
+    margin-top: 0;
+}
+
+.spinner {
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 3px solid var(--color-border);
+    border-top-color: var(--color-accent);
+    border-radius: 50%;
+    animation: spinner-rotate 0.8s linear infinite;
+}
+
+@keyframes spinner-rotate {
+    to { transform: rotate(360deg); }
+}
+
+/* ---- Tabulka kurzů (sekce B) ---- */
+
+.course-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.course-table__head-cell {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 2px solid var(--color-border);
+    text-align: left;
+    font-size: 0.875rem;
+    color: var(--color-muted);
+}
+
+.course-row__cell {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: top;
+}
+
+.course-row__cell--action {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.course-row--excluded .course-row__cell {
+    color: var(--color-muted);
+    text-decoration: line-through;
+    background: var(--color-surface);
+}
+
+.course-row--excluded .course-row__cell--action {
+    text-decoration: none;
+}
+
+.course-row__exclude {
+    padding: 0.125rem 0.5rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.25rem;
+    background: transparent;
+    color: var(--color-muted);
+    font: inherit;
+    cursor: pointer;
+}
+
+.course-row__exclude:hover {
+    border-color: var(--color-error);
+    color: var(--color-error);
+}
