@@ -19,8 +19,26 @@ body {
 }
 
 .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     border-bottom: 1px solid var(--color-border);
     padding: 0.75rem 1.5rem;
+}
+
+.header__auth {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.header__auth-status {
+    color: var(--color-muted);
+    font-size: 0.875rem;
+}
+
+.header__logout-form {
+    margin: 0;
 }
 
 .header__title {
@@ -70,6 +88,32 @@ body {
 
 .button:hover {
     filter: brightness(1.1);
+}
+
+.button--secondary {
+    display: inline-block;
+    background: transparent;
+    color: var(--color-accent);
+    border: 1px solid var(--color-accent);
+    text-decoration: none;
+}
+
+.auth-card {
+    max-width: 28rem;
+    margin: 3rem auto;
+    padding: 2rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    background: var(--color-surface);
+    text-align: center;
+}
+
+.auth-card__title {
+    margin-top: 0;
+}
+
+.auth-card__text {
+    color: var(--color-muted);
 }
 
 .result {
