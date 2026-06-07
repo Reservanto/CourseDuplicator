@@ -1,0 +1,34 @@
+/* =====================================================================
+   TÉMA — MERCHANT ADMIN (zakázkové administrace pro merchanty)
+   Charakter: vzdušnější, důvěryhodný, srozumitelný. Více bílého prostoru,
+   měkčí rohy, větší a pohodlnější ovládací prvky.
+
+   Použití v projektu:
+     <link rel="stylesheet" href="core/tokens.css">
+     <link rel="stylesheet" href="core/components.css">
+     <link rel="stylesheet" href="systems/merchant/theme.css">
+     <body class="rds-app rds-theme--merchant"> … </body>
+
+   Téma přepisuje JEN sémantickou + density vrstvu. Primitiva a komponenty
+   zůstávají sdílené s Internal tématem.
+   ===================================================================== */
+
+.rds-theme--merchant {
+  /* Hustota — vzdušnější */
+  --font-size-body:    14px;
+  --control-height:    34px;
+  --control-padding-x: var(--rds-space-8);   /* 16 */
+  --control-radius:    var(--rds-radius-lg); /* 5 — měkčí */
+
+  --card-padding:      var(--rds-space-10);  /* 20 */
+  --card-radius:       var(--rds-radius-xl); /* 8 */
+
+  --table-head-py:     var(--rds-space-6);   /* 12 */
+  --table-cell-py:     var(--rds-space-8);   /* 16 — vzdušná tabulka */
+  --table-cell-px:     var(--rds-space-10);  /* 20 */
+
+  --content-pad:       var(--rds-space-16);  /* 32 */
+  --nav-item-py:       var(--rds-space-4);   /* 8  */
+
+  /* Barvy zůstávají sdílené (brand teal). Akcent beze změny. */
+}

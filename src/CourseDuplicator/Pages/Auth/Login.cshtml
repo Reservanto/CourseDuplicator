@@ -4,14 +4,17 @@
     ViewData["Title"] = "Přihlášení";
 }
 
-<div class="auth-card">
-    <h2 class="auth-card__title">Přihlášení</h2>
-    <p class="auth-card__text">
-        Pro práci s kurzy se přihlaste svým účtem Reservanto.
-        Budete přesměrováni na Reservanto, kde aplikaci udělíte přístup.
-    </p>
-    <form method="post" asp-page-handler="Start">
-        <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
-        <button class="button" type="submit">Přihlásit se přes Reservanto</button>
-    </form>
+<div class="rds-card auth-card">
+    <div class="rds-card__body auth-card__body">
+        <div class="rds-brand auth-card__brand"><img class="brand-logo" src="~/img/logo.svg" alt="Reservanto" width="24" height="24" /> Course Duplicator</div>
+        <h1 class="rds-h1">Přihlášení</h1>
+        <p class="auth-card__text">
+            Pro práci s kurzy se přihlaste svým účtem Reservanto.
+            Budete přesměrováni na Reservanto, kde aplikaci udělíte přístup.
+        </p>
+        <form method="post" asp-page-handler="Start">
+            <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
+            <button class="rds-btn rds-btn--primary rds-btn--lg" type="submit">Přihlásit se přes Reservanto</button>
+        </form>
+    </div>
 </div>

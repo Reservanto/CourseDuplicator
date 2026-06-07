@@ -4,9 +4,13 @@
     ViewData["Title"] = "Chyba";
 }
 
-<h2>Došlo k chybě</h2>
-<p>Při zpracování požadavku došlo k neočekávané chybě.</p>
-@if (Model.RequestId is not null)
-{
-    <p class="hint">Request ID: <code>@Model.RequestId</code></p>
-}
+<section class="rds-card">
+    <div class="rds-card__body">
+        <h2 class="rds-h2">Došlo k chybě</h2>
+        <p class="rds-muted">Při zpracování požadavku došlo k neočekávané chybě.</p>
+        @if (Model.RequestId is not null)
+        {
+            <p class="rds-muted">Request ID: <code class="rds-mono">@Model.RequestId</code></p>
+        }
+    </div>
+</section>

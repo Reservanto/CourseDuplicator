@@ -6,67 +6,66 @@
 
 @Html.AntiForgeryToken()
 
-<div class="duplicator">
-
-    <!-- Sekce A: Volba zdrojového období -->
-    <section class="duplicator__section" id="section-source">
-        <h2 class="duplicator__section-title">Zdrojové období</h2>
-
-        <div class="form-field" id="segment-field">
-            <label class="form-field__label" for="segment-select">Segment</label>
-            <select class="form-field__input" id="segment-select" disabled>
+<!-- Sekce A: Volba zdrojového období -->
+<section class="rds-card" id="section-source">
+    <div class="rds-card__head"><h2 class="rds-h2">Zdrojové období</h2></div>
+    <div class="rds-card__body rds-stack-6">
+        <div class="rds-field duplicator__field" id="segment-field">
+            <label class="rds-label" for="segment-select">Segment</label>
+            <select class="rds-select" id="segment-select" disabled>
                 <option value="">Načítám segmenty…</option>
             </select>
         </div>
-        <p class="hint duplicator__single-segment" id="segment-single" hidden></p>
+        <p class="rds-help" id="segment-single" hidden></p>
 
         <div class="duplicator__date-range">
-            <div class="form-field">
-                <label class="form-field__label" for="source-from">Datum OD</label>
-                <input class="form-field__input" type="date" id="source-from" />
+            <div class="rds-field">
+                <label class="rds-label" for="source-from">Datum OD</label>
+                <input class="rds-input" type="date" id="source-from" />
             </div>
-            <div class="form-field">
-                <label class="form-field__label" for="source-to">Datum DO</label>
-                <input class="form-field__input" type="date" id="source-to" />
+            <div class="rds-field">
+                <label class="rds-label" for="source-to">Datum DO</label>
+                <input class="rds-input" type="date" id="source-to" />
             </div>
         </div>
 
-        <div class="duplicator__actions">
-            <button class="button" type="button" id="load-courses-btn">Načíst kurzy</button>
+        <div class="rds-row">
+            <button class="rds-btn rds-btn--primary" type="button" id="load-courses-btn">Načíst kurzy</button>
             <span class="spinner" id="load-spinner" hidden></span>
-            <span class="hint" id="load-status"></span>
+            <span class="rds-muted" id="load-status"></span>
         </div>
-        <p class="duplicator__error" id="load-error" hidden></p>
-    </section>
+        <p class="rds-error" id="load-error" hidden></p>
+    </div>
+</section>
 
-    <!-- Sekce B: Přehled načtených kurzů -->
-    <section class="duplicator__section" id="section-overview" hidden>
-        <h2 class="duplicator__section-title">Načtené kurzy</h2>
-        <div id="course-list"></div>
-        <p class="duplicator__summary" id="course-summary"></p>
-    </section>
+<!-- Sekce B: Přehled načtených kurzů -->
+<section class="rds-card" id="section-overview" hidden>
+    <div class="rds-card__head"><h2 class="rds-h2">Načtené kurzy</h2></div>
+    <div id="course-list"></div>
+    <p class="rds-muted duplicator__summary" id="course-summary"></p>
+</section>
 
-    <!-- Sekce C: Cílové období -->
-    <section class="duplicator__section" id="section-target" hidden>
-        <h2 class="duplicator__section-title">Cílové období</h2>
-
-        <div class="form-field">
-            <label class="form-field__label" for="new-from">Nové datum OD</label>
-            <input class="form-field__input" type="date" id="new-from" />
+<!-- Sekce C: Cílové období -->
+<section class="rds-card" id="section-target" hidden>
+    <div class="rds-card__head"><h2 class="rds-h2">Cílové období</h2></div>
+    <div class="rds-card__body rds-stack-6">
+        <div class="rds-field duplicator__field">
+            <label class="rds-label" for="new-from">Nové datum OD</label>
+            <input class="rds-input" type="date" id="new-from" />
         </div>
-        <p class="duplicator__error" id="target-error" hidden></p>
+        <p class="rds-error" id="target-error" hidden></p>
 
         <fieldset class="duplicator__radios">
-            <legend class="duplicator__radios-legend">Strategie mapování dne v týdnu</legend>
-            <label class="duplicator__radio">
+            <legend class="rds-label">Strategie mapování dne v týdnu</legend>
+            <label class="rds-check">
                 <input type="radio" name="shift-strategy" value="weekday" checked />
                 Zachovat dny v týdnu
-                <span class="hint">(posun zaokrouhlený na celé týdny, efektivní OD se může lišit o ±3 dny)</span>
+                <span class="rds-help">(posun zaokrouhlený na celé týdny, efektivní OD se může lišit o ±3 dny)</span>
             </label>
-            <label class="duplicator__radio">
+            <label class="rds-check">
                 <input type="radio" name="shift-strategy" value="exact" />
                 Přesný posun
-                <span class="hint">(dny v týdnu se posunou)</span>
+                <span class="rds-help">(dny v týdnu se posunou)</span>
             </label>
         </fieldset>
 
@@ -82,66 +81,68 @@
         </dl>
 
         <p class="duplicator__period-check" id="period-check" hidden></p>
-    </section>
+    </div>
+</section>
 
-    <!-- Sekce D: Detail kurzů s novými datumy -->
-    <section class="duplicator__section" id="section-detail" hidden>
-        <h2 class="duplicator__section-title">Kurzy s novými datumy</h2>
-        <div id="course-detail-list"></div>
-    </section>
+<!-- Sekce D: Detail kurzů s novými datumy -->
+<section class="rds-card" id="section-detail" hidden>
+    <div class="rds-card__head"><h2 class="rds-h2">Kurzy s novými datumy</h2></div>
+    <div id="course-detail-list"></div>
+</section>
 
-    <!-- Sekce E: Globální nastavení nových kurzů -->
-    <section class="duplicator__section" id="section-settings" hidden>
-        <h2 class="duplicator__section-title">Globální nastavení nových kurzů</h2>
-
-        <div class="form-field">
-            <label class="duplicator__checkbox">
-                <input type="checkbox" id="single-lection-enabled" />
-                Povolit rezervace jednotlivých lekcí
-            </label>
+<!-- Sekce E: Globální nastavení nových kurzů -->
+<section class="rds-card" id="section-settings" hidden>
+    <div class="rds-card__head"><h2 class="rds-h2">Globální nastavení nových kurzů</h2></div>
+    <div class="rds-card__body rds-stack-6">
+        <label class="rds-check">
+            <input type="checkbox" id="single-lection-enabled" />
+            Povolit rezervace jednotlivých lekcí
+        </label>
+        <div class="rds-field duplicator__field" id="single-lection-from-field" hidden>
+            <label class="rds-label" for="single-lection-from">Povolit rezervace jednotlivých lekcí od</label>
+            <input class="rds-input" type="date" id="single-lection-from" />
+            <span class="rds-help">Prázdné = od začátku.</span>
         </div>
-        <div class="form-field" id="single-lection-from-field" hidden>
-            <label class="form-field__label" for="single-lection-from">Povolit rezervace jednotlivých lekcí od</label>
-            <input class="form-field__input" type="date" id="single-lection-from" />
-            <p class="hint">Prázdné = od začátku.</p>
-        </div>
 
-        <div class="form-field">
-            <label class="form-field__label" for="registration-end-strategy">Konec registrace</label>
-            <select class="form-field__input" id="registration-end-strategy">
+        <div class="rds-field duplicator__field">
+            <label class="rds-label" for="registration-end-strategy">Konec registrace</label>
+            <select class="rds-select" id="registration-end-strategy">
                 <option value="keepOffset" selected>Zachovat offset</option>
                 <option value="atStart">Začátek první lekce</option>
                 <option value="daysBefore">N dní před začátkem</option>
             </select>
         </div>
-        <div class="form-field" id="registration-end-days-field" hidden>
-            <label class="form-field__label" for="registration-end-days">Počet dní před začátkem</label>
-            <input class="form-field__input" type="number" id="registration-end-days" min="0" value="3" />
+        <div class="rds-field duplicator__field" id="registration-end-days-field" hidden>
+            <label class="rds-label" for="registration-end-days">Počet dní před začátkem</label>
+            <input class="rds-input" type="number" id="registration-end-days" min="0" value="3" />
         </div>
-    </section>
+    </div>
+</section>
 
-    <!-- Sekce F: Potvrzení a vytvoření (vždy viditelná na spodku, spec 5F) -->
-    <section class="duplicator__section" id="section-confirm">
-        <h2 class="duplicator__section-title">Vytvoření kurzů</h2>
-        <p class="duplicator__summary" id="create-summary">Bude vytvořeno 0 kurzů s celkem 0 lekcemi.</p>
+<!-- Sekce F: Potvrzení a vytvoření (vždy viditelná na spodku, spec 5F) -->
+<section class="rds-card" id="section-confirm">
+    <div class="rds-card__head"><h2 class="rds-h2">Vytvoření kurzů</h2></div>
+    <div class="rds-card__body rds-stack-6">
+        <p class="duplicator__create-summary" id="create-summary">Bude vytvořeno 0 kurzů s celkem 0 lekcemi.</p>
         <p class="duplicator__warning" id="create-warning" hidden></p>
-        <div class="duplicator__actions">
-            <button class="button" type="button" id="create-courses-btn" disabled>Vytvořit kurzy</button>
+        <div class="rds-row">
+            <button class="rds-btn rds-btn--primary" type="button" id="create-courses-btn" disabled>Vytvořit kurzy</button>
             <span class="spinner" id="create-spinner" hidden></span>
-            <span class="hint" id="create-status"></span>
+            <span class="rds-muted" id="create-status"></span>
         </div>
-        <p class="duplicator__error" id="create-error" hidden></p>
-    </section>
+        <p class="rds-error" id="create-error" hidden></p>
+    </div>
+</section>
 
-    <!-- Sekce G: Výsledek -->
-    <section class="duplicator__section" id="section-result" hidden>
-        <h2 class="duplicator__section-title">Výsledek</h2>
-        <p class="duplicator__summary" id="result-summary"></p>
+<!-- Sekce G: Výsledek -->
+<section class="rds-card" id="section-result" hidden>
+    <div class="rds-card__head"><h2 class="rds-h2">Výsledek</h2></div>
+    <div class="rds-card__body rds-stack-6">
+        <p id="result-summary"></p>
         <ul class="result-list" id="result-list"></ul>
-        <button class="button" type="button" id="reset-btn">Vytvořit další</button>
-    </section>
-
-</div>
+        <button class="rds-btn rds-btn--secondary" type="button" id="reset-btn">Vytvořit další</button>
+    </div>
+</section>
 
 @section Scripts {
     <script src="~/js/mapping.js" asp-append-version="true"></script>

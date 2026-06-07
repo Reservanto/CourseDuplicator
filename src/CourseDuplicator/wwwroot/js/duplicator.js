@@ -419,12 +419,11 @@
 
     const buildTable = (labels) => {
         const table = document.createElement('table');
-        table.className = 'course-table';
+        table.className = 'rds-table';
         const head = document.createElement('thead');
         const headRow = document.createElement('tr');
         for (const label of labels) {
             const th = document.createElement('th');
-            th.className = 'course-table__head-cell';
             th.textContent = label;
             headRow.appendChild(th);
         }
@@ -439,9 +438,17 @@
         courseList.innerHTML = '';
 
         if (state.courses.length === 0) {
-            const empty = document.createElement('p');
-            empty.className = 'duplicator__empty';
-            empty.textContent = 'Žádné kurzy k duplikaci v zadaném období.';
+            const empty = document.createElement('div');
+            empty.className = 'rds-empty';
+            const icon = document.createElement('div');
+            icon.className = 'rds-empty__icon';
+            icon.textContent = '▤';
+            const title = document.createElement('div');
+            title.className = 'rds-empty__title';
+            title.textContent = 'Žádné kurzy k duplikaci';
+            const text = document.createElement('div');
+            text.textContent = 'V zadaném období nejsou žádné kurzy. Zkuste upravit segment nebo rozsah dat.';
+            empty.append(icon, title, text);
             courseList.appendChild(empty);
             courseSummary.textContent = '';
             return;
@@ -463,7 +470,7 @@
     const excludeToggle = (course) => {
         const toggle = document.createElement('button');
         toggle.type = 'button';
-        toggle.className = 'course-row__exclude';
+        toggle.className = 'rds-btn rds-btn--ghost rds-btn--sm';
         toggle.textContent = course.isExcluded ? '↩' : '✕';
         toggle.title = course.isExcluded ? 'Vrátit do duplikace' : 'Vyloučit z duplikace';
         toggle.addEventListener('click', () => {
@@ -476,24 +483,24 @@
 
     const renderCourseRow = (course) => {
         const row = document.createElement('tr');
-        row.className = 'course-row' + (course.isExcluded ? ' course-row--excluded' : '');
+        if (course.isExcluded) row.className = 'is-excluded';
 
-        const cell = (content) => {
+        const cell = (content, className = '') => {
             const td = document.createElement('td');
-            td.className = 'course-row__cell';
+            if (className) td.className = className;
             td.textContent = content;
             row.appendChild(td);
             return td;
         };
 
-        cell(course.name);
+        cell(course.name, 'cell-strong');
         cell(courseSourceLabel(course));
         cell(String(course.capacity));
         cell(String(course.lections.length));
         cell(`${formatDate(course.originalStartDate)} – ${formatDate(course.originalEndDate)}`);
 
         const actionCell = document.createElement('td');
-        actionCell.className = 'course-row__cell course-row__cell--action';
+        actionCell.className = 'cell-action';
         actionCell.appendChild(excludeToggle(course));
         row.appendChild(actionCell);
 
@@ -534,11 +541,11 @@
 
     const renderDetailRow = (course) => {
         const row = document.createElement('tr');
-        row.className = 'course-row' + (course.isExcluded ? ' course-row--excluded' : '');
+        if (course.isExcluded) row.className = 'is-excluded';
 
-        const cell = (content) => {
+        const cell = (content, className = '') => {
             const td = document.createElement('td');
-            td.className = 'course-row__cell';
+            if (className) td.className = className;
             td.textContent = content;
             row.appendChild(td);
             return td;
@@ -547,7 +554,7 @@
         const activeLections = course.lections.filter((l) => !l.isExcluded).length;
         const { min, max } = courseNewRange(course);
 
-        cell(course.name);
+        cell(course.name, 'cell-strong');
         cell(courseSourceLabel(course));
         cell(String(course.capacity));
         cell(activeLections === course.lections.length
@@ -557,15 +564,15 @@
         cell(min && max ? `${formatDate(min)} – ${formatDate(max)}` : '–');
 
         const excludeCell = document.createElement('td');
-        excludeCell.className = 'course-row__cell course-row__cell--action';
+        excludeCell.className = 'cell-action';
         excludeCell.appendChild(excludeToggle(course));
         row.appendChild(excludeCell);
 
         const detailCell = document.createElement('td');
-        detailCell.className = 'course-row__cell course-row__cell--action';
+        detailCell.className = 'cell-action';
         const detailToggle = document.createElement('button');
         detailToggle.type = 'button';
-        detailToggle.className = 'course-row__detail-toggle';
+        detailToggle.className = 'rds-btn rds-btn--ghost rds-btn--sm';
         detailToggle.textContent = course._detailOpen ? '▾ detail' : '▸ detail';
         detailToggle.addEventListener('click', () => {
             course._detailOpen = !course._detailOpen;
@@ -579,14 +586,12 @@
 
     const renderLectionsRow = (course) => {
         const row = document.createElement('tr');
-        row.className = 'course-row__lections';
         const cell = document.createElement('td');
-        cell.className = 'course-row__lections-cell';
+        cell.className = 'lections-cell';
         cell.colSpan = 8;
 
         const { table, body } = buildTable(
             ['#', 'Původní datum', 'Nové datum', 'Délka', '', '']);
-        table.className = 'lection-table';
         course.lections.forEach((lection, index) => {
             body.appendChild(renderLectionRow(course, lection, index));
         });
@@ -597,11 +602,11 @@
 
     const renderLectionRow = (course, lection, index) => {
         const row = document.createElement('tr');
-        row.className = 'lection-row' + (lection.isExcluded ? ' lection-row--excluded' : '');
+        if (lection.isExcluded) row.className = 'is-excluded';
 
         const cell = (content, className = '') => {
             const td = document.createElement('td');
-            td.className = `lection-row__cell ${className}`.trim();
+            if (className) td.className = className;
             if (content !== null) td.textContent = content;
             row.appendChild(td);
             return td;
@@ -612,27 +617,26 @@
 
         // Nové datum: klik -> inline edit (datetime-local), enter potvrdí, esc/blur zruší.
         const newStart = lectionNewStart(lection);
-        const newCell = cell(null, 'lection-row__new');
+        const newCell = cell(null);
         if (lection.isPinned) {
             const pin = document.createElement('span');
-            pin.className = 'lection-row__pin';
             pin.textContent = '📌 ';
             pin.title = 'Ručně připnuté datum - globální přepočet ho nemění';
             newCell.appendChild(pin);
         }
         newCell.appendChild(document.createTextNode(newStart ? formatDateTime(newStart) : '–'));
         if (newStart && !lection.isExcluded) {
-            newCell.classList.add('lection-row__new--editable');
+            newCell.classList.add('cell-editable');
             newCell.title = 'Klikněte pro ruční úpravu data';
             newCell.addEventListener('click', () => beginLectionEdit(newCell, lection));
         }
 
         cell(`${lectionLengthMinutes(lection)} min`);
 
-        const excludeCell = cell(null, 'lection-row__cell--action');
+        const excludeCell = cell(null, 'cell-action');
         const toggle = document.createElement('button');
         toggle.type = 'button';
-        toggle.className = 'course-row__exclude';
+        toggle.className = 'rds-btn rds-btn--ghost rds-btn--sm';
         toggle.textContent = lection.isExcluded ? '↩' : '✕';
         toggle.title = lection.isExcluded ? 'Vrátit lekci do duplikace' : 'Vyloučit lekci z duplikace';
         toggle.addEventListener('click', () => {
@@ -641,11 +645,11 @@
         });
         excludeCell.appendChild(toggle);
 
-        const pinCell = cell(null, 'lection-row__cell--action');
+        const pinCell = cell(null, 'cell-action');
         if (lection.isPinned) {
             const unpin = document.createElement('button');
             unpin.type = 'button';
-            unpin.className = 'course-row__detail-toggle';
+            unpin.className = 'rds-btn rds-btn--ghost rds-btn--sm';
             unpin.textContent = 'obnovit auto výpočet';
             unpin.addEventListener('click', () => {
                 lection.isPinned = false;
@@ -662,7 +666,7 @@
         const current = lectionNewStart(lection);
         const input = document.createElement('input');
         input.type = 'datetime-local';
-        input.className = 'lection-row__edit-input';
+        input.className = 'rds-input edit-input';
         input.value = toLocalInputValue(current);
 
         let finished = false;
@@ -691,7 +695,7 @@
 
         cell.replaceChildren(input);
         // Klik na buňku s inputem nesmí znovu spustit edit
-        cell.classList.remove('lection-row__new--editable');
+        cell.classList.remove('cell-editable');
         input.focus();
     };
 

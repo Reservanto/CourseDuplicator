@@ -7,7 +7,7 @@ Webová aplikace pro hromadnou duplikaci kurzů merchantů Reservanto z jednoho 
 - **.NET 10** ASP.NET Core
 - **Razor Pages** (server-rendered shell, jediná stránka `Index` + JSON handlery)
 - **Vanilla JS** (žádný framework, žádný TypeScript)
-- **Žádný CSS framework** (vanilla CSS)
+- **Reservanto Design System** (`wwwroot/css/design/` + `DESIGN.md` v rootu - **drž se ho při každé změně UI**): třídy `rds-*`, sémantické tokeny `--color-*`/density, merchant téma. `tokens.css` je runtime vrstva, `_tokens.scss` jen build-time zrcadlo. Pozn.: komponenty DS nastavují `display`, viditelnost přes atribut `hidden` jistí `[hidden] { display: none !important; }` v `site.css`.
 - Veškerá komunikace s Reservanto API probíhá **přes backend handlery** (proxy pattern). Tokeny nikdy neopouští backend.
 - **Mapování datumů běží ve frontendu** (`mapping.js`, spec 6) - backend přijímá hotové UnixTimestampy.
 

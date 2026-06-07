@@ -1,0 +1,115 @@
+// =====================================================================
+// RESERVANTO DESIGN SYSTEM — CORE TOKENS (SCSS)
+//
+// SCSS zrcadlo k tokens.css. Použij to, co se ti hodí:
+//  - V runtime/komponentách preferuj CSS proměnné z tokens.css
+//    (umožní témata a pozdější dark mode bez rekompilace).
+//  - SCSS proměnné/mapy zde slouží pro build-time logiku, výpočty,
+//    @each generování utilit a pro IDE napovídání.
+//
+// Pravidlo: komponenty stylovat přes SÉMANTICKÉ tokeny, ne primitiva.
+// =====================================================================
+
+// ---------- 1) PRIMITIVA ----------
+
+// Brand teal (z #74b9bf)
+$rds-teal: (
+  50:  #f0f7f8,
+  100: #d9ebec,
+  200: #b9dadd,
+  300: #94c7cb,
+  400: #74b9bf,   // OFICIÁLNÍ BRAND
+  500: #4ea3aa,
+  600: #2f8088,   // tlačítka
+  700: #256a71,   // hover
+  800: #1f565c,
+  900: #1a4549,
+);
+
+// Neutrály
+$rds-gray: (
+  0:   #ffffff,
+  50:  #f9f9fb,
+  100: #f3f3f5,
+  150: #ececef,
+  200: #e6e6ea,
+  300: #d4d4da,
+  400: #b4b4bc,
+  500: #8f8f98,
+  600: #6b6b74,
+  700: #56565e,
+  800: #38383e,
+  900: #1c1c21,
+);
+
+// Stavové
+$rds-status: (
+  green-600: #147a52, green-soft: #e6f6f0,
+  amber-600: #946000, amber-soft: #fdf3e0,
+  red-600:   #c0303a, red-soft:   #fdeef0,
+  blue-600:  #2660bf, blue-soft:  #eaf1fc,
+);
+
+// Typografie
+$font-sans: ('Ubuntu', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+$font-mono: ('Ubuntu Mono', ui-monospace, 'SF Mono', Menlo, monospace);
+
+$text: (
+  xs:   11.5px,
+  sm:   12.5px,
+  base: 13.5px,
+  md:   14px,
+  lg:   16px,
+  xl:   18px,
+  2xl:  22px,
+  3xl:  28px,
+);
+
+// Ubuntu má jen tyto váhy (100/200 NEEXISTUJE → spadne na 300)
+$weight: (light: 300, regular: 400, medium: 500, bold: 700);
+
+$leading: (tight: 1.25, normal: 1.5, relaxed: 1.6);
+
+// Spacing (4px základ)
+$space: (
+  0: 0, px: 1px, 1: 2px, 2: 4px, 3: 6px, 4: 8px, 5: 10px, 6: 12px,
+  8: 16px, 10: 20px, 12: 24px, 16: 32px, 20: 40px, 24: 48px, 32: 64px,
+);
+
+// Rádiusy
+$radius: (sm: 2px, base: 4px, lg: 5px, xl: 8px, pill: 9999px);
+
+// Stíny
+$shadow: (
+  sm: (0 1px 2px rgba(20,20,30,.035)),
+  base: (0 1px 2px rgba(20,20,30,.05), 0 1px 3px rgba(20,20,30,.04)),
+  md: (0 4px 12px rgba(20,20,30,.08), 0 2px 4px rgba(20,20,30,.05)),
+  lg: (0 12px 32px rgba(20,20,30,.14), 0 4px 8px rgba(20,20,30,.06)),
+);
+
+// ---------- Helper ----------
+@function teal($k)  { @return map-get($rds-teal, $k); }
+@function gray($k)  { @return map-get($rds-gray, $k); }
+@function sp($k)    { @return map-get($space, $k); }
+@function rad($k)   { @return map-get($radius, $k); }
+@function fs($k)    { @return map-get($text, $k); }
+@function fw($k)    { @return map-get($weight, $k); }
+
+// ---------- 2) SÉMANTICKÉ aliasy (build-time) ----------
+$color-bg:            gray(50);
+$color-surface:       gray(0);
+$color-surface-2:     gray(50);
+$color-ink:           gray(900);
+$color-ink-2:         gray(700);
+$color-ink-3:         gray(500);
+$color-border:        gray(200);
+$color-border-strong: gray(300);
+
+$color-accent:        teal(600);
+$color-accent-hover:  teal(700);
+$color-accent-brand:  teal(400);
+$color-accent-muted:  teal(100);
+$color-accent-soft:   teal(50);
+
+$control-height: 30px;
+$card-radius:    rad(lg);

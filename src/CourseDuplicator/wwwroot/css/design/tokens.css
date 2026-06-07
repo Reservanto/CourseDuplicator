@@ -1,0 +1,160 @@
+/* =====================================================================
+   RESERVANTO DESIGN SYSTEM — CORE TOKENS (CSS)
+   Runtime vrstva tokenů (CSS proměnné). SCSS zrcadlo: _tokens.scss.
+
+   Dvě vrstvy:
+     1) PRIMITIVA  --rds-*   (paleta, škály) — v komponentách NEPOUŽÍVAT napřímo
+     2) SÉMANTIKA  --color-*, --control-*, --card-*, density — POUŽÍVAT tyto
+   Témata (theme.css) přepisují jen sémantickou + density vrstvu.
+   ===================================================================== */
+
+:root {
+  /* ---------- 1) PRIMITIVA ---------- */
+
+  /* Brand teal (z #74b9bf) */
+  --rds-teal-50:  #f0f7f8;
+  --rds-teal-100: #d9ebec;
+  --rds-teal-200: #b9dadd;
+  --rds-teal-300: #94c7cb;
+  --rds-teal-400: #74b9bf;   /* OFICIÁLNÍ BRAND */
+  --rds-teal-500: #4ea3aa;
+  --rds-teal-600: #2f8088;   /* tlačítka */
+  --rds-teal-700: #256a71;   /* hover */
+  --rds-teal-800: #1f565c;
+  --rds-teal-900: #1a4549;
+
+  /* Neutrály */
+  --rds-gray-0:   #ffffff;
+  --rds-gray-50:  #f9f9fb;
+  --rds-gray-100: #f3f3f5;
+  --rds-gray-150: #ececef;
+  --rds-gray-200: #e6e6ea;
+  --rds-gray-300: #d4d4da;
+  --rds-gray-400: #b4b4bc;
+  --rds-gray-500: #8f8f98;
+  --rds-gray-600: #6b6b74;
+  --rds-gray-700: #56565e;
+  --rds-gray-800: #38383e;
+  --rds-gray-900: #1c1c21;
+
+  /* Stavové (ověřené na WCAG AA) */
+  --rds-green-600: #147a52;  --rds-green-soft: #e6f6f0;
+  --rds-amber-600: #946000;  --rds-amber-soft: #fdf3e0;
+  --rds-red-600:   #c0303a;  --rds-red-soft:   #fdeef0;
+  --rds-blue-600:  #2660bf;  --rds-blue-soft:  #eaf1fc;
+
+  /* Typografie — Ubuntu má jen váhy 300/400/500/700 */
+  --rds-font-sans: 'Ubuntu', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --rds-font-mono: 'Ubuntu Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --rds-text-xs:   11.5px;
+  --rds-text-sm:   12.5px;
+  --rds-text-base: 13.5px;
+  --rds-text-md:   14px;
+  --rds-text-lg:   16px;
+  --rds-text-xl:   18px;
+  --rds-text-2xl:  22px;
+  --rds-text-3xl:  28px;
+
+  --rds-weight-light:   300;
+  --rds-weight-regular: 400;
+  --rds-weight-medium:  500;
+  --rds-weight-bold:    700;
+
+  --rds-leading-tight:   1.25;
+  --rds-leading-normal:  1.5;
+  --rds-leading-relaxed: 1.6;
+
+  --rds-tracking-tight: -.015em;
+
+  /* Spacing (4px základ) */
+  --rds-space-0:  0;
+  --rds-space-px: 1px;
+  --rds-space-1:  2px;
+  --rds-space-2:  4px;
+  --rds-space-3:  6px;
+  --rds-space-4:  8px;
+  --rds-space-5:  10px;
+  --rds-space-6:  12px;
+  --rds-space-8:  16px;
+  --rds-space-10: 20px;
+  --rds-space-12: 24px;
+  --rds-space-16: 32px;
+  --rds-space-20: 40px;
+  --rds-space-24: 48px;
+  --rds-space-32: 64px;
+
+  /* Rádiusy */
+  --rds-radius-sm:   2px;
+  --rds-radius:      4px;   /* base */
+  --rds-radius-lg:   5px;
+  --rds-radius-xl:   8px;
+  --rds-radius-pill: 9999px;
+
+  /* Stíny */
+  --rds-shadow-sm:   0 1px 2px rgba(20,20,30,.035);
+  --rds-shadow-base: 0 1px 2px rgba(20,20,30,.05), 0 1px 3px rgba(20,20,30,.04);
+  --rds-shadow-md:   0 4px 12px rgba(20,20,30,.08), 0 2px 4px rgba(20,20,30,.05);
+  --rds-shadow-lg:   0 12px 32px rgba(20,20,30,.14), 0 4px 8px rgba(20,20,30,.06);
+
+  /* Pohyb */
+  --rds-duration-1: 140ms;
+  --rds-ease: cubic-bezier(.2, .6, .2, 1);
+
+  /* Vrstvy */
+  --rds-z-sticky:  100;
+  --rds-z-overlay: 1000;
+  --rds-z-toast:   1100;
+
+  /* ---------- 2) SÉMANTICKÁ VRSTVA (defaults; témata přepisují) ---------- */
+
+  --font-family:      var(--rds-font-sans);
+  --font-family-mono: var(--rds-font-mono);
+  --font-size-body:   var(--rds-text-base);
+  --line-height-body: var(--rds-leading-normal);
+
+  --color-bg:            var(--rds-gray-50);
+  --color-surface:       var(--rds-gray-0);
+  --color-surface-2:     var(--rds-gray-50);
+  --color-ink:           var(--rds-gray-900);
+  --color-ink-2:         var(--rds-gray-700);
+  --color-ink-3:         var(--rds-gray-500);
+  --color-ink-inv:       var(--rds-gray-0);
+  --color-border:        var(--rds-gray-200);
+  --color-border-strong: var(--rds-gray-300);
+
+  /* Akcent: výplně tmavším tealem (brand #74b9bf neprochází kontrastem s bílou) */
+  --color-accent:       var(--rds-teal-600);
+  --color-accent-hover: var(--rds-teal-700);
+  --color-accent-ink:   var(--rds-teal-700);   /* teal text na světlém podkladu */
+  --color-accent-brand: var(--rds-teal-400);   /* logo, focus ring, jemná podbarvení */
+  --color-accent-muted: var(--rds-teal-100);
+  --color-accent-soft:  var(--rds-teal-50);
+
+  --color-success:      var(--rds-green-600);
+  --color-success-soft: var(--rds-green-soft);
+  --color-warning:      var(--rds-amber-600);
+  --color-warning-soft: var(--rds-amber-soft);
+  --color-danger:       var(--rds-red-600);
+  --color-danger-soft:  var(--rds-red-soft);
+  --color-info:         var(--rds-blue-600);
+  --color-info-soft:    var(--rds-blue-soft);
+
+  --color-focus-ring: var(--rds-teal-400);
+  --color-focus-halo: rgba(116, 185, 191, .30);
+
+  /* ---------- Density (defaults; merchant téma zvzdušňuje) ---------- */
+  --control-height:    30px;
+  --control-padding-x: var(--rds-space-6);
+  --control-radius:    var(--rds-radius);
+
+  --card-padding: var(--rds-space-8);
+  --card-radius:  var(--rds-radius-lg);
+
+  --table-head-py: var(--rds-space-4);
+  --table-cell-py: var(--rds-space-5);
+  --table-cell-px: var(--rds-space-8);
+
+  --content-pad: var(--rds-space-12);
+  --nav-item-py: var(--rds-space-3);
+}

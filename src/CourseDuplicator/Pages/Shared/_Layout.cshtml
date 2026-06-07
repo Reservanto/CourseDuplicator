@@ -1,32 +1,60 @@
 <!DOCTYPE html>
 @inject CourseDuplicator.Services.AuthService Auth
+@{
+    var isAuthPage = Context.Request.Path.StartsWithSegments("/Auth");
+}
 <html lang="cs">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>@(ViewData["Title"] is string title ? $"{title} – Course Duplicator" : "Course Duplicator")</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="~/css/design/tokens.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/design/components.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/design/theme.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
-<body>
-    <header class="header">
-        <h1 class="header__title"><a class="header__link" href="/">Course Duplicator</a></h1>
-        <div class="header__auth">
-            @if (Auth.IsAuthenticated)
-            {
-                <span class="header__auth-status">přihlášen</span>
-                <form class="header__logout-form" method="post" asp-page="/Auth/Logout">
-                    <button class="button button--secondary" type="submit">Odhlásit</button>
-                </form>
-            }
-            else
-            {
-                <a class="button button--secondary" asp-page="/Auth/Login">Přihlásit se</a>
-            }
+<body class="rds-app rds-theme--merchant">
+    @if (isAuthPage)
+    {
+        <main class="auth-shell">
+            @RenderBody()
+        </main>
+    }
+    else
+    {
+        <div class="rds-layout">
+            <aside class="rds-sidebar">
+                <div class="rds-brand"><img class="brand-logo" src="~/img/logo.svg" alt="Reservanto" width="24" height="24" /> Course Duplicator</div>
+                <nav class="rds-nav">
+                    <a href="/" class="is-active"><span class="ico">⧉</span> Duplikace kurzů</a>
+                </nav>
+            </aside>
+            <div class="rds-main">
+                <div class="rds-topbar">
+                    <div class="rds-crumb">Reservanto / <b>Duplikace kurzů</b></div>
+                    <div class="rds-row">
+                        @if (Auth.IsAuthenticated)
+                        {
+                            <span class="rds-muted">přihlášen</span>
+                            <form class="topbar__logout" method="post" asp-page="/Auth/Logout">
+                                <button class="rds-btn rds-btn--secondary rds-btn--sm" type="submit">Odhlásit</button>
+                            </form>
+                        }
+                        else
+                        {
+                            <a class="rds-btn rds-btn--secondary rds-btn--sm" asp-page="/Auth/Login">Přihlásit se</a>
+                        }
+                    </div>
+                </div>
+                <main class="rds-content rds-stack-8">
+                    @RenderBody()
+                </main>
+            </div>
         </div>
-    </header>
-    <main class="main">
-        @RenderBody()
-    </main>
+    }
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>
