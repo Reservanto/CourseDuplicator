@@ -372,14 +372,22 @@
     let periodCheckTimer = null;
     let periodCheckSeq = 0;
 
+    let lastPeriodCheckKey = null;
+
     /** Naplánuje kontrolu nového období (debounce 500 ms; null = skrýt). */
     const schedulePeriodCheck = (from, to) => {
         clearTimeout(periodCheckTimer);
         if (!from || !to) {
             periodCheckSeq++;
             periodCheck.hidden = true;
+            lastPeriodCheckKey = null;
             return;
         }
+        // Beze změny segmentu/dat kontrolu neopakuj - jinak hláška o načítání
+        // probliká a posune stránku i při zavření editace bez úpravy.
+        const key = `${state.segmentId}|${toUnix(from)}|${toUnix(to)}`;
+        if (key === lastPeriodCheckKey) return;
+        lastPeriodCheckKey = key;
         periodCheckTimer = setTimeout(() => checkNewPeriod(from, to), 500);
     };
 
@@ -673,6 +681,7 @@
         const finish = (save) => {
             if (finished) return;
             finished = true;
+            document.removeEventListener('pointerdown', onOutsidePointerDown, true);
             if (save) {
                 const parsed = parseLocalInputValue(input.value);
                 if (parsed) {
@@ -683,6 +692,18 @@
             recalculate();
         };
 
+        // Potvrzení až při kliknutí MIMO input. Segmenty datetime-local (den/měsíc/
+        // hodina) jsou v shadow DOM, takže klik na ně má event.target === input
+        // a edit se nezavře. Klik kamkoli jinam hodnotu uloží.
+        const onOutsidePointerDown = (event) => {
+            if (event.target === input || input.contains(event.target)) return;
+            finish(true);
+        };
+
+        // Klik uvnitř inputu nesmí probublat na click listener buňky (td), který
+        // by znovu spustil beginLectionEdit a zresetoval rozeditovaný segment.
+        input.addEventListener('click', (event) => event.stopPropagation());
+
         input.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') {
                 event.preventDefault();
@@ -691,9 +712,17 @@
                 finish(false);
             }
         });
-        input.addEventListener('blur', () => finish(false));
+        // Tab na jiný focusovatelný prvek hodnotu uloží. Přechod mezi segmenty
+        // datetime-local zůstává uvnitř inputu (relatedTarget je retargetovaný na
+        // input nebo jeho potomka) - to edit nezavírá. Nativní picker dává
+        // relatedTarget === null, takže rovněž nezavře.
+        input.addEventListener('focusout', (event) => {
+            const next = event.relatedTarget;
+            if (next && next !== input && !input.contains(next)) finish(true);
+        });
 
         cell.replaceChildren(input);
+        document.addEventListener('pointerdown', onOutsidePointerDown, true);
         // Klik na buňku s inputem nesmí znovu spustit edit
         cell.classList.remove('cell-editable');
         input.focus();
