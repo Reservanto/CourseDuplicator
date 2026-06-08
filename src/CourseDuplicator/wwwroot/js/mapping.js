@@ -6,6 +6,11 @@ window.CourseDuplicator = window.CourseDuplicator || {};
 window.CourseDuplicator.Mapping = (() => {
     const MS_PER_DAY = 86400000;
 
+    // Jediný zdroj pravdy pro povolené strategie (spec 6.1-6.4). Konzumuje je validace
+    // v duplicator.js (applyPrefs); zdejší switche/podmínky enumerují stejné hodnoty.
+    const SHIFT_STRATEGIES = ['weekday', 'exact'];
+    const REGISTRATION_END_STRATEGIES = ['keepOffset', 'atStart', 'daysBefore'];
+
     /** Rozdíl celých kalendářních dnů mezi dvěma daty (ignoruje čas, imunní vůči DST). */
     const daysBetween = (from, to) => {
         const fromUtc = Date.UTC(from.getFullYear(), from.getMonth(), from.getDate());
@@ -116,6 +121,8 @@ window.CourseDuplicator.Mapping = (() => {
     };
 
     return {
+        SHIFT_STRATEGIES,
+        REGISTRATION_END_STRATEGIES,
         calculateShift,
         mapLectionDate,
         calculateRegistrationEnd,

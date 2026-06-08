@@ -182,9 +182,6 @@ public class IndexModel : PageModel
     /// <summary>Max souběžných volání Course/Create (spec 5F).</summary>
     private const int MaxParallelCourseCreates = 3;
 
-    /// <summary>Max počet retry při HTTP 429, backoff 1s/2s/4s (spec 8).</summary>
-    private const int MaxRateLimitRetries = 3;
-
     // Request body POST /?handler=CreateCourses (spec 7.2). Datumy jsou UnixTimestamp (UTC sekundy).
     public record CreateCoursesRequest(CreateGlobalSettings? GlobalSettings, List<CreateCourseItem>? Courses);
     public record CreateGlobalSettings(bool SingleLectionBookingEnabled, long? SingleLectionBookingFrom);
@@ -300,7 +297,6 @@ public class IndexModel : PageModel
 
         var stt = getStt();
         var sttRefreshed = false;
-        var rateLimitRetries = 0;
 
         while (true)
         {
@@ -311,13 +307,6 @@ public class IndexModel : PageModel
                     "Kurz \"{CourseName}\" zduplikován jako Id={NewCourseId} ({LectionCount} lekcí).",
                     course.Name, newCourseId, createRequest.Lections.Count);
                 return new CreateCourseResult(course.Name!, true, newCourseId, null);
-            }
-            catch (ReservantoApiException ex) when (
-                ex.StatusCode == HttpStatusCode.TooManyRequests && rateLimitRetries < MaxRateLimitRetries)
-            {
-                // 429: exponential backoff 1s/2s/4s (spec 8).
-                rateLimitRetries++;
-                await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, rateLimitRetries - 1)), ct);
             }
             catch (ReservantoApiException ex) when (
                 ex.StatusCode == HttpStatusCode.Unauthorized && !sttRefreshed)

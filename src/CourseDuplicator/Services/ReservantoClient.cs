@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CourseDuplicator.Models.Reservanto;
@@ -13,6 +14,9 @@ public class ReservantoClient
 {
     /// <summary>Course/GetList povoluje interval max 31 dní - načítáme po blocích max 30 dnů.</summary>
     private const int MaxIntervalDays = 30;
+
+    /// <summary>Max počet retry při HTTP 429, backoff 1s/2s/4s (spec 8) - platí pro všechny endpointy.</summary>
+    private const int MaxRateLimitRetries = 3;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -111,32 +115,52 @@ public class ReservantoClient
     private async Task<TResponse> PostAsync<TRequest, TResponse>(
         string path, TRequest body, string? stt, CancellationToken ct)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, path)
+        var rateLimitRetries = 0;
+        HttpResponseMessage response;
+        while (true)
         {
-            Content = JsonContent.Create(body, options: JsonOptions),
-        };
-        // STT není standardní auth schéma ("Bearer xyz"), posílá se jako surová hodnota hlavičky.
-        if (stt is not null)
-            request.Headers.TryAddWithoutValidation("Authorization", stt);
+            // HttpRequestMessage nelze odeslat opakovaně (Content se spotřebuje), tvoří se v každém pokusu.
+            using var request = new HttpRequestMessage(HttpMethod.Post, path)
+            {
+                Content = JsonContent.Create(body, options: JsonOptions),
+            };
+            // STT není standardní auth schéma ("Bearer xyz"), posílá se jako surová hodnota hlavičky.
+            if (stt is not null)
+                request.Headers.TryAddWithoutValidation("Authorization", stt);
 
-        using var response = await _http.SendAsync(request, ct);
-        var responseBody = await response.Content.ReadAsStringAsync(ct);
+            response = await _http.SendAsync(request, ct);
 
-        if (!response.IsSuccessStatusCode)
-            throw new ReservantoApiException(
-                $"Reservanto API vrátilo HTTP {(int)response.StatusCode} pro {path}.",
-                response.StatusCode, responseBody);
+            // 429: exponential backoff 1s/2s/4s, max 3 retry (spec 8).
+            if (response.StatusCode == HttpStatusCode.TooManyRequests && rateLimitRetries < MaxRateLimitRetries)
+            {
+                response.Dispose();
+                rateLimitRetries++;
+                await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, rateLimitRetries - 1)), ct);
+                continue;
+            }
+            break;
+        }
 
-        var result = JsonSerializer.Deserialize<TResponse>(responseBody, JsonOptions)
-            ?? throw new ReservantoApiException($"Prázdná odpověď Reservanto API pro {path}.",
-                response.StatusCode, responseBody);
+        using (response)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync(ct);
 
-        if (result is ApiResponseBase { IsError: true } error)
-            throw new ReservantoApiException(
-                $"Reservanto API vrátilo chybu pro {path}: {error.ErrorMessage ?? "bez chybové zprávy"}",
-                response.StatusCode, responseBody);
+            if (!response.IsSuccessStatusCode)
+                throw new ReservantoApiException(
+                    $"Reservanto API vrátilo HTTP {(int)response.StatusCode} pro {path}.",
+                    response.StatusCode, responseBody);
 
-        return result;
+            var result = JsonSerializer.Deserialize<TResponse>(responseBody, JsonOptions)
+                ?? throw new ReservantoApiException($"Prázdná odpověď Reservanto API pro {path}.",
+                    response.StatusCode, responseBody);
+
+            if (result is ApiResponseBase { IsError: true } error)
+                throw new ReservantoApiException(
+                    $"Reservanto API vrátilo chybu pro {path}: {error.ErrorMessage ?? "bez chybové zprávy"}",
+                    response.StatusCode, responseBody);
+
+            return result;
+        }
     }
 
     // Request body modely interních endpointů - viz OpenAPI schéma Reservanta.

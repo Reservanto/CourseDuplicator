@@ -189,7 +189,7 @@
             }
         }
 
-        if (prefs.shiftStrategy === 'weekday' || prefs.shiftStrategy === 'exact') {
+        if (Mapping.SHIFT_STRATEGIES.includes(prefs.shiftStrategy)) {
             state.shiftStrategy = prefs.shiftStrategy;
             const radio = document.querySelector(`input[name="shift-strategy"][value="${prefs.shiftStrategy}"]`);
             if (radio) radio.checked = true;
@@ -205,7 +205,7 @@
             state.singleLectionBookingFrom = parseDateInput(singleLectionFrom, false);
         }
 
-        if (['keepOffset', 'atStart', 'daysBefore'].includes(prefs.registrationEndStrategy)) {
+        if (Mapping.REGISTRATION_END_STRATEGIES.includes(prefs.registrationEndStrategy)) {
             state.registrationEndStrategy = prefs.registrationEndStrategy;
             registrationEndStrategy.value = prefs.registrationEndStrategy;
             registrationEndDaysField.hidden = prefs.registrationEndStrategy !== 'daysBefore';
@@ -360,12 +360,6 @@
 
         renderDetail();
         updateCreateSection();
-
-        // RegistrationEnd se v UI zatím per kurz nezobrazuje - kontrola přes konzoli.
-        console.log('RegistrationEnd per kurz:', state.courses.map((c) => ({
-            kurz: c.name,
-            registrationEnd: c.newRegistrationEnd ? formatDateTime(c.newRegistrationEnd) : null,
-        })));
     };
 
     // ---- Kontrola, zda v novém období již existují kurzy ----
@@ -730,9 +724,14 @@
 
     // ---- Sekce F: potvrzení a vytvoření ----
 
-    /** Kurzy k vytvoření: ne-vyloučené, s aspoň jednou ne-vyloučenou lekcí se spočteným novým startem. */
+    /**
+     * Kurzy k vytvoření: ne-vyloučené, se spočteným newRegistrationEnd a aspoň jednou
+     * ne-vyloučenou lekcí se spočteným novým startem. Podmínka newRegistrationEnd brání
+     * pozdějšímu toUnix(null) v buildCreateRequest (newRegistrationEnd je null, dokud
+     * applyMappingToState nenajde nový start kurzu).
+     */
     const coursesToCreate = () => state.courses
-        .filter((c) => !c.isExcluded)
+        .filter((c) => !c.isExcluded && c.newRegistrationEnd)
         .map((course) => ({
             course,
             lections: course.lections.filter((l) => !l.isExcluded && lectionNewStart(l)),

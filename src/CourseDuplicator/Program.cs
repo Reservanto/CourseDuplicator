@@ -43,6 +43,14 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
+// LTT chodí v query stringu callbacku (návrh Reservanta) - no-referrer brání jeho úniku
+// přes hlavičku Referer při navigaci pryč z /Auth/Callback.
+app.Use(async (context, next) =>
+{
+    context.Response.Headers.Append("Referrer-Policy", "no-referrer");
+    await next();
+});
+
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
