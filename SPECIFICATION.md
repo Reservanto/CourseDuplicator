@@ -229,6 +229,9 @@ Klik na „detail" rozbalí seznam jednotlivých lekcí daného kurzu:
 - Pořadí | Původní datum + den v týdnu | Nové datum + den v týdnu | Délka | [křížek] | [edit]
 - Křížek - vyloučí konkrétní lekci (ostatní zůstanou).
 - Edit (klik na nové datum, input se stane editovatelným) - umožní ručně přepsat datum konkrétní lekce (`datetime-local`).
+  - **Potvrzení:** `Enter` nebo opuštění editačního pole (klik mimo input, přesun na jiný prvek `Tab`em) zadanou hodnotu uloží a lekci připne.
+  - **Zrušení:** `Escape` editaci zruší bez uložení.
+  - Klik **uvnitř** editačního pole (přepínání mezi segmenty den/měsíc/hodina, nativní picker) editaci neukončuje - focus zůstává v inputu.
 - **Změna data jakékoli lekce nepřepočítává ostatní lekce** - jen ručně přepsaná lekce se odpojí od globálního přepočtu (drží si vlastní hodnotu). Pokud uživatel později změní globální „nové datum OD", ručně editované lekce zůstanou na svých hodnotách. UI ručně editované lekce vizuálně odliší (např. ikona „připnuto") a nabídne tlačítko „obnovit automatický výpočet".
 - Pokud uživatel přepíše datum **první lekce** a v sekci E je zvolena strategie RegistrationEnd „zachovat offset", **RegistrationEnd kurzu se přepočítá automaticky** podle nového data první lekce.
 
