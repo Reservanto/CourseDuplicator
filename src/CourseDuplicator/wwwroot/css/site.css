@@ -133,7 +133,7 @@ html, body {
 .duplicator__computed {
     display: flex;
     gap: var(--rds-space-24);
-    margin: 0;
+    margin: 1em 0;
     padding: var(--rds-space-6) var(--rds-space-8);
     background: var(--color-surface-2);
     border: 1px solid var(--color-border);
