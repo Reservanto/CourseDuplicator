@@ -62,6 +62,11 @@ Aplikace v callback handleru:
 - Pokud `accepted=0` → zobrazit UI „Autorizace zrušena", odkaz „Zkusit znovu".
 - Pokud `accepted=1` → uložit `token` jako LTT do session, redirect na `/`.
 
+LTT chodí v query stringu callbacku (návrh Reservanta, nelze ovlivnit). Aby trvalý token
+neunikal přes hlavičku `Referer` při navigaci pryč z `/Auth/Callback`, aplikace posílá
+`Referrer-Policy: no-referrer` na všech odpovědích. Na úrovni nasazení se navíc doporučuje
+nelogovat query string pro `/Auth/*` v access logu reverzní proxy.
+
 ### 3.5 CSRF protection
 
 **Reservanto nepodporuje OAuth `state` parametr** (dokumentace ho nezmiňuje). Místo toho použijeme **session flag**:
@@ -439,7 +444,7 @@ Response: `{ count, names }`, kde `names` je max prvních 5 názvů kurzů seřa
 - **Žádné kurzy v zadaném období** → Krok 3 zobrazí prázdný stav „Žádné kurzy k duplikaci" + tlačítko zpět.
 - **STT expirovaný uprostřed batchového vytváření** → automaticky regenerovat, retry once.
 - **API vrátí 403 (chybí oprávnění `Course_w`)** → zobrazit zřetelnou hlášku „Chybí oprávnění pro vytváření kurzů. Kontaktujte podporu Reservanta."
-- **Rate limiting (429)** → exponential backoff, max 3 retry.
+- **Rate limiting (429)** → exponential backoff 1 s / 2 s / 4 s, max 3 retry. Řeší se centrálně ve `ReservantoClient` pro **všechna** volání API (čtení i zápis - `Course/GetList`, `Course/Get`, `Course/Create`), ne jen pro batch vytváření.
 - **Síťová chyba** → message v UI, nic se nevytvořilo, stav se neztratil (klient může zkusit znovu).
 
 ## 9. UX detaily
