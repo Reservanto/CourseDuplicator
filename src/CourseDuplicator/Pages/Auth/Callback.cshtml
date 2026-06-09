@@ -6,6 +6,7 @@
 
 <div class="rds-card auth-card">
     <div class="rds-card__body auth-card__body">
+        <div class="rds-brand auth-card__brand"><img class="brand-logo" src="~/img/logo.svg" alt="Reservanto" width="24" height="24" /> Course Duplicator</div>
         @if (Model.Denied)
         {
             <h1 class="rds-h1">Autorizace zamítnuta</h1>
@@ -13,11 +14,19 @@
                 Bez udělení přístupu nemůže aplikace s vašimi kurzy pracovat.
             </p>
         }
+        else if (Model.SessionExpired)
+        {
+            <h1 class="rds-h1">Přihlášení vypršelo</h1>
+            <p class="auth-card__text">
+                Od zahájení přihlášení uplynulo příliš mnoho času, nebo se mezitím relace obnovila,
+                takže ho nešlo dokončit. Není to chyba – stačí přihlášení spustit znovu.
+            </p>
+        }
         else
         {
             <h1 class="rds-h1">Přihlášení se nezdařilo</h1>
             <p class="auth-card__text">@Model.Error</p>
         }
-        <a class="rds-btn rds-btn--primary" asp-page="/Auth/Login">Zkusit znovu</a>
+        <a class="rds-btn rds-btn--primary" asp-page="/Auth/Login">Přihlásit se znovu</a>
     </div>
 </div>

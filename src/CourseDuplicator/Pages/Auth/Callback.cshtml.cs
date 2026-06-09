@@ -20,14 +20,19 @@ public class CallbackModel : PageModel
     }
 
     public bool Denied { get; private set; }
+    public bool SessionExpired { get; private set; }
     public string? Error { get; private set; }
 
     public async Task<IActionResult> OnGetAsync(int accepted, string? token, CancellationToken ct)
     {
         if (!_authService.ConsumeAwaitingCallback())
         {
-            _logger.LogWarning("Callback bez platného session flagu - možný CSRF pokus nebo vypršelá session.");
-            return BadRequest("Neočekávaný callback");
+            // Chybí session flag: typicky vypršelá/ztracená relace mezi zahájením přihlášení
+            // a návratem z Reservanta (in-memory session, viz recyklace App Service), méně často CSRF pokus.
+            // V obou případech nepřihlašujeme - jen uživateli nabídneme přívětivé zopakování.
+            _logger.LogWarning("Callback bez platného session flagu - vypršelá relace nebo neočekávaný callback.");
+            SessionExpired = true;
+            return Page();
         }
 
         if (accepted == 0)
@@ -38,7 +43,12 @@ public class CallbackModel : PageModel
         }
 
         if (accepted != 1 || string.IsNullOrWhiteSpace(token))
-            return BadRequest("Neplatné parametry callbacku");
+        {
+            _logger.LogWarning("Callback s neplatnými parametry (accepted={Accepted}, token prázdný={EmptyToken}).",
+                accepted, string.IsNullOrWhiteSpace(token));
+            Error = "Z Reservanta dorazila neúplná odpověď, přihlášení nešlo dokončit. Zkuste to prosím znovu.";
+            return Page();
+        }
 
         _authService.StoreLongTimeToken(token);
 
