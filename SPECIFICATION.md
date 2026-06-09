@@ -43,7 +43,7 @@ GET https://api.reservanto.cz/v1/Authorize/GetLongTimeToken
 `rights` se opakuje pro každé požadované oprávnění.
 
 **Pro Course Duplicator požadujeme tato práva:**
-- `Segment_r` - načtení dropdown segmentů (potvrzeno: `/v1/Segment/GetList`)
+- `Segment_r` - načtení dropdownu zaměření (potvrzeno: `/v1/Segment/GetList`)
 - `Course_r` - načtení existujících kurzů a jejich detail (potvrzeno: `/v1/Course/GetList`, `/v1/Course/Get`)
 - `Course_w` - vytváření nových kurzů (potvrzeno: `/v1/Course/Create`)
 - `BookingResource_r` - pravděpodobně potřeba pro plnění `BookingResourceName` v response (TODO ověřit při testování - pokud se vrací jako null, je to potřeba)
@@ -111,6 +111,7 @@ V `appsettings.json` (nebo přes user-secrets pro produkci):
 
 **Segment** (zaměření obchodníka, např. „kurzy jógy"):
 - `Id`, `Name`
+- **Terminologie:** interně (kód, DB, Reservanto API, JSON pole, názvy handlerů, právo `Segment_r`) se používá **Segment**. V **uživatelském rozhraní** (popisky, hlášky, texty pro merchanta) se vždy používá **Zaměření**. Při generování UI textů nikdy nepiš „segment".
 
 **SimpleCourseApiModel** (z `Course/GetList`):
 - `Id`, `Name`, `Description`
@@ -185,7 +186,7 @@ Aplikace je **jedna stránka s progresivním odhalováním sekcí**, ne klasick�
 
 ### Sekce A: Volba zdrojového období
 
-- Dropdown **Segment** (pokud má merchant jen jeden, automaticky předvybrán a sekce je sbalená).
+- Dropdown **Zaměření** (pokud má merchant jen jedno, automaticky předvybráno a sekce je sbalená).
 - Inputy **datum OD** a **datum DO** zdrojového období.
 - Tlačítko **„Načíst kurzy"**.
 
@@ -456,10 +457,10 @@ Response: `{ count, names }`, kde `names` je max prvních 5 názvů kurzů seřa
   - Nové datum OD musí být v budoucnu (> now) - blokující chyba (viz sekce C)
   - Nové datum OD > poslední lekce zdrojového období - jen warning v sekci F, neblokuje
 - **Uchování naposledy zadaných hodnot:** cookie `cd_prefs` (JSON, expirace 30 dnů,
-  `SameSite=Lax`) ukládá segment, datum OD/DO, nové datum OD, strategii mapování dne v týdnu
+  `SameSite=Lax`) ukládá zaměření, datum OD/DO, nové datum OD, strategii mapování dne v týdnu
   a globální nastavení sekce E. Ukládá se při změně příslušné kontrolky a při „Načíst kurzy";
   při další návštěvě se hodnoty předvyplní. Nové datum OD z cookie se obnoví jen pokud je
-  stále v budoucnu; segment jen pokud v dropdownu stále existuje.
+  stále v budoucnu; zaměření jen pokud v dropdownu stále existuje.
 - Responzivita: alespoň desktop a tablet. Mobile není priorita.
 
 ## 10. Bezpečnost

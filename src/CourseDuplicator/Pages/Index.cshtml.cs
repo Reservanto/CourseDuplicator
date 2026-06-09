@@ -45,8 +45,8 @@ public class IndexModel : PageModel
         }
         catch (ReservantoApiException ex)
         {
-            _logger.LogError(ex, "Načtení segmentů selhalo: {StatusCode} {ResponseBody}", ex.StatusCode, ex.ResponseBody);
-            return ApiError("Načtení segmentů z Reservanta selhalo.");
+            _logger.LogError(ex, "Načtení zaměření selhalo: {StatusCode} {ResponseBody}", ex.StatusCode, ex.ResponseBody);
+            return ApiError("Načtení zaměření z Reservanta selhalo.");
         }
     }
 
@@ -60,7 +60,7 @@ public class IndexModel : PageModel
     public async Task<IActionResult> OnPostLoadCoursesAsync([FromBody] LoadCoursesRequest request, CancellationToken ct)
     {
         if (request is null || request.SegmentId <= 0 || request.From >= request.To)
-            return ApiError("Neplatné zadání: vyberte segment a období OD < DO.", StatusCodes.Status400BadRequest);
+            return ApiError("Neplatné zadání: vyberte zaměření a období OD < DO.", StatusCodes.Status400BadRequest);
 
         var from = DateTimeOffset.FromUnixTimeSeconds(request.From);
         var to = DateTimeOffset.FromUnixTimeSeconds(request.To);
@@ -94,7 +94,7 @@ public class IndexModel : PageModel
             }));
 
             _logger.LogInformation(
-                "Načteno {CourseCount} kurzů ({TotalCount} v blocích před filtrem) segmentu {SegmentId} pro období {From} - {To}.",
+                "Načteno {CourseCount} kurzů ({TotalCount} v blocích před filtrem) zaměření {SegmentId} pro období {From} - {To}.",
                 details.Length, allCourses.Count, request.SegmentId, from, to);
 
             return new JsonResult(new

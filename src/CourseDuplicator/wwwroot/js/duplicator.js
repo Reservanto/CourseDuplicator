@@ -237,7 +237,7 @@
             segmentSelect.innerHTML = '';
 
             if (segments.length === 0) {
-                showError('Váš účet nemá žádné segmenty.');
+                showError('Váš účet nemá žádná zaměření.');
                 return;
             }
 
@@ -259,7 +259,7 @@
             // Jediný segment: automaticky vybrán, dropdown sbalený na prostý text (spec 5A).
             if (segments.length === 1) {
                 segmentField.hidden = true;
-                segmentSingle.textContent = `Segment: ${segments[0].name}`;
+                segmentSingle.textContent = `Zaměření: ${segments[0].name}`;
                 segmentSingle.hidden = false;
             }
         } catch (error) {
@@ -286,7 +286,7 @@
         state.sourceTo = parseDateInput(sourceToInput, true);
 
         if (!state.segmentId || !state.sourceFrom || !state.sourceTo) {
-            showError('Vyberte segment a zadejte obě data období.');
+            showError('Vyberte zaměření a zadejte obě data období.');
             return;
         }
         if (state.sourceFrom >= state.sourceTo) {
@@ -449,7 +449,7 @@
             title.className = 'rds-empty__title';
             title.textContent = 'Žádné kurzy k duplikaci';
             const text = document.createElement('div');
-            text.textContent = 'V zadaném období nejsou žádné kurzy. Zkuste upravit segment nebo rozsah dat.';
+            text.textContent = 'V zadaném období nejsou žádné kurzy. Zkuste upravit zaměření nebo rozsah dat.';
             empty.append(icon, title, text);
             courseList.appendChild(empty);
             courseSummary.textContent = '';
