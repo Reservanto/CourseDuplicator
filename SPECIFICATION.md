@@ -9,7 +9,7 @@ Webová aplikace umožňující merchantům Reservanto hromadně zduplikovat def
 - **Backend:** ASP.NET Core na .NET 10, Razor Pages
 - **Frontend:** Vanilla JS (ne TypeScript), žádný CSS framework
 - **Architektura:** Server-side Razor Page jako shell; veškerá komunikace s Reservanto API probíhá přes backend handlery (proxy). API klíče / tokeny **nikdy** neopouští backend.
-- **Hosting:** Single-tenant aplikace hostovaná Petrem. Merchanti (uživatelé) se přihlašují přes OAuth-like flow Reservanta (LongTimeToken → ShortTimeToken).
+- **Hosting:** Nasazení jako jedna webová aplikace (např. Azure App Service). Aplikace je u Reservanta registrovaná jedním `clientId`; libovolný merchant se přihlásí svým Reservanto účtem přes OAuth-like flow (LongTimeToken → ShortTimeToken).
 
 ## 3. Autentizace
 

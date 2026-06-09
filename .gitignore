@@ -479,3 +479,6 @@ $RECYCLE.BIN/
 
 # Playwright MCP artifacts
 .playwright-mcp/
+
+# Claude Code local settings (permissions, local paths)
+.claude/

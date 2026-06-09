@@ -19,3 +19,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+Trademarks and third-party assets (NOT covered by the MIT license above):
+
+The Reservanto name and logo (including `wwwroot/img/logo.svg`) are trademarks
+and property of Reservanto. The Reservanto Design System — the design tokens,
+component styles and theme under `wwwroot/css/design/` — is the property of
+Reservanto and is included here only to make the example application render in
+its native look. These assets are NOT licensed under MIT and must not be reused
+as part of "the Software" granted above. Remove or replace them if you reuse
+this project outside the Reservanto context.

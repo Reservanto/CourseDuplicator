@@ -16,9 +16,9 @@ Webová aplikace pro **hromadnou duplikaci kurzů** merchantů [Reservanto](http
 
 Projekt je licencován pod licencí **[MIT](LICENSE)**.
 
-Zdrojové kódy, Markdown prompty (`CLAUDE.md`), specifikaci (`SPECIFICATION.md`) i design (`DESIGN.md`) dávám volně k dispozici **ve stavu, v jakém jsou (as-is), bez záruk**.
+Zdrojové kódy, Markdown prompty (`CLAUDE.md`) i specifikaci (`SPECIFICATION.md`) dávám volně k dispozici **ve stavu, v jakém jsou (as-is), bez záruk**. Kdokoli si je může stáhnout, upravit a libovolně použít — slouží k **inspiraci i volnému využití**.
 
-Kdokoli si je může stáhnout, upravit a libovolně použít — slouží k **inspiraci i volnému využití**.
+> **Výjimka:** název a logo **Reservanto** a **Reservanto Design System** (soubory ve `wwwroot/css/design/` a `wwwroot/img/logo.svg`) jsou majetkem Reservanta a **nejsou kryty MIT licencí**. Jsou součástí repa jen kvůli nativnímu vzhledu ukázky — při použití projektu mimo kontext Reservanta je odeberte nebo nahraďte. Viz [`LICENSE`](LICENSE).
 
 ---
 
@@ -83,4 +83,3 @@ Tutéž callback URL je nutné zaregistrovat i u Reservanta.
 
 - [`SPECIFICATION.md`](SPECIFICATION.md) — kompletní funkční specifikace
 - [`CLAUDE.md`](CLAUDE.md) — instrukce a kontext pro Claude Code (prompt/architektura)
-- [`DESIGN.md`](DESIGN.md) — Reservanto Design System a konvence UI
