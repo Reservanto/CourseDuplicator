@@ -271,6 +271,8 @@ Vždy viditelná na spodku stránky.
 
 Mapování probíhá **v JavaScriptu na frontendu** (pro okamžitý přepočet při změně inputu). Backend mapování neimplementuje - přijímá od frontendu finální UnixTimestamp hodnoty pro `Lections[].Start`.
 
+**Kotva posunu:** posun je ukotvený na **datum OD zdrojového období** (vstup v sekci A), ne na první lekci. „Nové datum OD" tedy určuje, kam se posune *začátek období*; lekce si zachovají svůj odstup od něj. Pokud uživatel zadá okno OD dříve, než je první lekce, nové kurzy spadnou o tu mezeru později než „stejné datum v cílovém období". V UI je u pole „Nové datum OD" nápověda, která to vysvětluje (chce-li uživatel první lekci přesně na zadaný den, zadá v sekci A datum OD shodné s první lekcí). Toto chování je záměrné.
+
 ### 6.1 Strategie „Zachovat dny v týdnu"
 
 ```
