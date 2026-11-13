@@ -55,7 +55,8 @@ public class IndexModel : PageModel
 
     /// <summary>
     /// POST /?handler=LoadCourses - načte kurzy období (Course/GetList po blocích, spec 7.3),
-    /// vyfiltruje plně spadající do období (spec 7.4) a pro každý dotáhne lekce přes Course/Get (spec 7.5).
+    /// vrátí kurzy plně spadající do období i ty, které ho jen protínají (isOverlapping, spec 7.4),
+    /// a pro každý dotáhne lekce přes Course/Get (spec 7.5).
     /// </summary>
     public async Task<IActionResult> OnPostLoadCoursesAsync([FromBody] LoadCoursesRequest request, CancellationToken ct)
     {
@@ -72,13 +73,19 @@ public class IndexModel : PageModel
             var allCourses = await _reservanto.GetCourseListAsync(
                 stt, request.SegmentId, from.UtcDateTime, to.UtcDateTime, ct);
 
-            // Klientský filtr (spec 7.4): jen kurzy plně spadající do zadaného období.
+            // Klientský filtr (spec 7.4): kurzy plně spadající do zadaného období + kurzy, které
+            // období jen protínají (přesahující, isOverlapping). Ostatní z bloků se zahodí.
             var filtered = allCourses
-                .Where(c => c.StartDate >= from && c.EndDate <= to)
+                .Where(c => c.StartDate <= to && c.EndDate >= from)
                 .OrderBy(c => c.StartDate)
                 .ToList();
+            var overlappingIds = filtered
+                .Where(c => !(c.StartDate >= from && c.EndDate <= to))
+                .Select(c => c.Id)
+                .ToHashSet();
 
             // Lekce nejsou v SimpleCourseApiModel - per kurz Course/Get, max 5 souběžně (spec 7.5).
+            // Načítají se i pro přesahující kurzy, aby šly zahrnout bez dalšího čekání (spec 7.4).
             using var semaphore = new SemaphoreSlim(MaxParallelCourseGets);
             var details = await Task.WhenAll(filtered.Select(async course =>
             {
@@ -94,8 +101,8 @@ public class IndexModel : PageModel
             }));
 
             _logger.LogInformation(
-                "Načteno {CourseCount} kurzů ({TotalCount} v blocích před filtrem) zaměření {SegmentId} pro období {From} - {To}.",
-                details.Length, allCourses.Count, request.SegmentId, from, to);
+                "Načteno {CourseCount} kurzů, z toho {OverlappingCount} přesahujících ({TotalCount} v blocích před filtrem) zaměření {SegmentId} pro období {From} - {To}.",
+                details.Length, overlappingIds.Count, allCourses.Count, request.SegmentId, from, to);
 
             return new JsonResult(new
             {
@@ -113,6 +120,7 @@ public class IndexModel : PageModel
                     startDate = d.StartDate.ToUnixTimeSeconds(),
                     endDate = d.EndDate.ToUnixTimeSeconds(),
                     registrationEnd = d.RegistrationEnd.ToUnixTimeSeconds(),
+                    isOverlapping = overlappingIds.Contains(d.Id),
                     // CalendarId není v CourseApiModel - čte se z první lekce (spec 7.6), pro fázi vytváření.
                     calendarId = d.Appointments.Count > 0 ? d.Appointments[0].CalendarId : (int?)null,
                     lections = d.Appointments

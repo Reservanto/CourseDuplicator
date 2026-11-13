@@ -140,13 +140,24 @@ state = {
 
   // Vstup ze sekce C
   newFrom: Date | null,         // nové datum OD (null = ještě nezadáno)
-  shiftStrategy: 'weekday' | 'exact',  // mapování dne v týdnu
+  shiftStrategy: 'weekday' | 'exact' | 'rhythm',  // mapování dne v týdnu / nový rozvrh podle rytmu (6.6)
+
+  // Jen pro shiftStrategy = 'rhythm' (6.6)
+  rhythmEndMode: 'endDate' | 'count',  // výchozí 'endDate'
+  newTo: Date | null,                  // konec nového bloku (včetně), pro 'endDate'
+  lectionCount: number | null,         // počet lekcí, pro 'count'
+  excludedDays: [                      // vynechané dny, od–do včetně, jen datum
+    { from: Date, to: Date, label: string | null }  // label např. „Velký pátek" u svátku
+  ],
+  holidayCountry: 'CZ' | 'SK',         // seznam svátků pro tlačítko v sekci C (6.6.4)
 
   // Vstup ze sekce E
   singleLectionBookingEnabled: boolean,
   singleLectionBookingFrom: Date | null,
   registrationEndStrategy: 'keepOffset' | 'atStart' | 'daysBefore',
   registrationEndDaysBefore: number,  // jen pro 'daysBefore'
+  nameFind: string,      // hromadná úprava názvů (sekce E), '' = beze změny
+  nameReplace: string,
 
   // Načtená data + lokální stav
   courses: [
@@ -174,13 +185,19 @@ state = {
         }
       ],
       // Lokální stav:
-      isExcluded: false
+      isExcluded: false,
+      isOverlapping: false,   // kurz přesahuje zdrojové období (7.4); u přesahujících výchozí isExcluded = true
+      rhythm: { weekday: number, time: 'HH:mm', lengthMinutes: number } | null,  // detekce 6.6.1, null = nerytmický
+      rhythmLections: [       // jen pro shiftStrategy = 'rhythm', generuje 6.6.2
+        { newStart: Date, isExcluded: false, isPinned: false, pinnedNewStart: Date | null }
+      ]
     }
   ]
 }
 ```
 
 Backend interně používá ekvivalentní C# modely pro deserializaci response z Reservanto API a pro request body při vytváření.
+Skupiny stejných kurzů (sekce B a D) se ve state nedrží, počítají se z `courses` (klíč viz sekce B).
 
 ## 5. Uživatelský flow
 
@@ -203,6 +220,19 @@ Tabulka kurzů:
 - Křížek - vyloučí kurz z duplikace (rovnou v tomto kroku, ať uživatel nemusí potom)
 
 Pod tabulkou: „Načteno X kurzů s celkem Y lekcemi. Vyloučeno Z kurzů."
+**Seskupení stejných kurzů:**
+- Kurzy se **stejným názvem a stejnými daty lekcí** (porovnává se jen kalendářní datum lekcí v Europe/Prague, ne čas) se zobrazí jako **jeden rozbalovací řádek skupiny**. Typicky jde o stejný kurz v různých časech nebo u různých lektorů.
+- Řádek skupiny: Název + „×N" | zdroje/služby (zkráceně, celý seznam v tooltipu) | kapacita (jedna hodnota, nebo rozsah min–max) | počet lekcí | rozsah dat | časy začátku (např. „8:30, 9:30, 10:15") | [křížek] | [▸ rozbalit].
+- Rozbalení ukáže jednotlivé kurzy skupiny jako běžné řádky.
+- Křížek na řádku skupiny vyloučí (resp. vrátí) **všechny** kurzy skupiny; v rozbaleném stavu jde vyloučit i jednotlivý kurz. Skupina s částečně vyloučenými kurzy to ukáže (např. „×12, vyloučeno 2").
+- Skupina s jediným kurzem se zobrazí jako obyčejný řádek.
+- Stejné seskupení používá tabulka v sekci D.
+
+**Kurzy přesahující zdrojové období:**
+- Kurzy, které se se zdrojovým obdobím **protínají, ale neleží v něm celé** (7.4), se nezahazují. Zobrazí se pod hlavní tabulkou v samostatném sbaleném bloku „Přesahují zdrojové období (N kurzů)" s vysvětlením „Začínají před datem OD nebo končí po datu DO. Ve výchozím stavu se nekopírují."
+- Řádky mají stejné sloupce a stejné seskupení jako hlavní tabulka; v rozsahu dat je zvýrazněná hranice, kterou kurz přesahuje.
+- Místo křížku mají checkbox **„Zahrnout"** (výchozí nezaškrtnuto = `isExcluded: true`). Zahrnutý kurz se kopíruje **celý, se všemi lekcemi**, i těmi mimo zdrojové období. Nezahrnuté řádky jsou jen ztlumené, ne přeškrtnuté, aby zvýrazněná hranice zůstala čitelná.
+- Souhrn pod tabulkou: „Načteno X kurzů s celkem Y lekcemi. Vyloučeno Z kurzů. Přesahuje období: W kurzů (zahrnuto V)." Do X a Y se počítají jen kurzy ležící v období.
 
 ### Sekce C: Cílové období
 
@@ -212,10 +242,24 @@ Zobrazí se, jakmile je v sekci B aspoň jeden kurz.
 - Radio buttons **strategie mapování dne v týdnu**:
   - **Zachovat dny v týdnu** (výchozí) - posun zaokrouhlený na celé týdny. Efektivní datum OD se může lišit od zadaného o ±3 dny.
   - **Přesný posun** - posun přesně podle zadaného data, dny v týdnu se posunou.
+  - **Nový rozvrh podle týdenního rytmu** - lekce se neposouvají, ale vygenerují znovu z pravidla „den v týdnu + čas" každého kurzu (6.6). Nabízí se jen tehdy, když jsou **všechny nevyloučené kurzy rytmické** (6.6.1). Jinak je volba disabled a pod ní je hláška „Nový rozvrh nejde použít, protože tyto kurzy nemají pravidelný týdenní rytmus: …" se seznamem názvů a odkazem, který je v sekci B vyloučí.
   - Změna této volby okamžitě přepočítá všechny lekce.
 - Read-only zobrazení:
   - **Efektivní datum OD** (při strategii „zachovat dny v týdnu" se může lišit od zadaného)
   - **Vypočtené datum DO** = maximum z nových datumů poslední lekce ze všech ne-vyloučených kurzů.
+- **Parametry strategie „Nový rozvrh podle týdenního rytmu"** (zobrazí se jen při této volbě):
+  - Pole „Nové datum OD" má popisek **„Začátek nového bloku"**. Datum se nezaokrouhluje; první lekce každého kurzu padne na první jeho den v týdnu od tohoto data (včetně). „Efektivní datum OD" se nezobrazuje, místo něj **„První lekce"** = nejdřívější vygenerovaná lekce.
+  - Přepínač **konec bloku**:
+    - **Datum konce** (výchozí) + date input **„Konec nového bloku"** (`newTo`, včetně). Musí být ≥ začátek bloku.
+    - **Počet lekcí** + číselný input (`lectionCount`, 1–52). Vynechané dny se do počtu nepočítají - kurz se o ně prodlouží.
+  - **Vynechané dny** (`excludedDays`):
+    - Dva date inputy OD a DO (DO nepovinné = jeden den) + tlačítko **„Přidat"**. Položky se zobrazí jako seznam (chipy) „28. 10. 2027 (čtvrtek)" resp. „25. 10. – 29. 10. 2027", u svátku s názvem („Velký pátek"), každá s křížkem pro odebrání. Seznam je seřazený podle data, překrývající se položky se nespojují.
+    - Tlačítko **„Přidat státní svátky v období"** + přepínač **CZ / SK** (`holidayCountry`). Vloží svátky z pevného seznamu (6.6.4) v intervalu začátek bloku – konec bloku (v režimu „Počet lekcí" začátek bloku + 12 měsíců). Svátek, který už v seznamu je (jednodenní položka se stejným datem), se nepřidá znovu; svátek ležící uvnitř ručně zadaného vícedenního rozsahu se přidá jako samostatná položka. Nic se nepřidává automaticky - vždy rozhoduje uživatel.
+    - Školní prázdniny a jiné dny zadává uživatel ručně.
+  - Každá změna parametrů okamžitě přegeneruje lekce (6.6.2). Pokud by přegenerování zahodilo ruční úpravy lekcí ze sekce D, nejdřív se zobrazí potvrzení „Změna zruší ruční úpravy u X lekcí. Pokračovat?" (6.3).
+  - **Neúplné parametry** (chybí konec bloku / počet lekcí, konec bloku < začátek, počet mimo 1–52) se chovají jako nezadané nové datum OD: zobrazí se chyba u pole, sekce D/E se skryjí, vypočtená data jsou „–" a v sekci F je hláška „Zadejte konec nového bloku." resp. „Zadejte počet lekcí nového bloku.".
+  - **Vypočtené datum DO** = poslední vygenerovaná lekce (6.5); v režimu „Datum konce" je vždy ≤ konec bloku.
+  - Kontrola obsazenosti (`CheckPeriod`) se volá pro interval začátek bloku – vypočtené DO.
 - **Validace: nové datum OD musí být v budoucnu** (> now). Datum v minulosti zobrazí chybu
   a chová se jako nezadané (sekce D/E se skryjí, tlačítko „Vytvořit kurzy" je disabled).
   Date input má `min` nastavené na zítřek.
@@ -230,6 +274,8 @@ Zobrazí se, jakmile je v sekci B aspoň jeden kurz.
 
 Zobrazí se, jakmile je vyplněno nové datum OD v sekci C.
 
+Tabulka obsahuje všechny kurzy ležící v období (vyloučené přeškrtnuté) a z přesahujících kurzů (7.4) jen ty zahrnuté, označené značkou „přesahuje období". Vyloučením v sekci D přesahující kurz z tabulky zmizí; vrátit ho jde checkboxem „Zahrnout" v sekci B.
+
 Tabulka kurzů (rozšíření tabulky z B, plus nové datumy):
 - Název | Zdroj/služba | Kapacita | Lekcí | Původní (OD – DO) | Nové (OD – DO) | [křížek] | [▸ detail]
 
@@ -242,6 +288,12 @@ Klik na „detail" rozbalí seznam jednotlivých lekcí daného kurzu:
   - Klik **uvnitř** editačního pole (přepínání mezi segmenty den/měsíc/hodina, nativní picker) editaci neukončuje - focus zůstává v inputu.
 - **Změna data jakékoli lekce nepřepočítává ostatní lekce** - jen ručně přepsaná lekce se odpojí od globálního přepočtu (drží si vlastní hodnotu). Pokud uživatel později změní globální „nové datum OD", ručně editované lekce zůstanou na svých hodnotách. UI ručně editované lekce vizuálně odliší (např. ikona „připnuto") a nabídne tlačítko „obnovit automatický výpočet".
 - Pokud uživatel přepíše datum **první lekce** a v sekci E je zvolena strategie RegistrationEnd „zachovat offset", **RegistrationEnd kurzu se přepočítá automaticky** podle nového data první lekce.
+**Sekce D při strategii „Nový rozvrh podle týdenního rytmu":**
+- Tabulka kurzů: Název | Zdroj/služba | Kapacita | Rytmus (např. „út 8:30, 45 min") | Původní (OD – DO, lekcí) | Nové (OD – DO, lekcí) | [křížek] | [▸ detail]. Seskupení jako v sekci B; u skupiny se rytmus zobrazí jako den + seznam časů.
+- Detail kurzu ukazuje **vygenerované lekce** (`rhythmLections`): Pořadí | Nové datum + den v týdnu | Délka | [křížek] | [edit]. Původní lekce jde zobrazit přepínačem „Ukázat původní lekce" (jen pro čtení).
+- Křížek a ruční editace data fungují stejně jako výše (připnutí, Enter/Escape, „obnovit automatický výpočet"). Změna parametrů v sekci C je ale zahodí (po potvrzení, viz sekce C a 6.3).
+- **Rozdílný počet lekcí:** pokud nevyloučené kurzy nemají stejný počet nových lekcí, nad tabulkou je oranžová hláška „Kurzy mají různý počet lekcí (9–11) kvůli vynechaným dnům." a u kurzů s počtem odlišným od nejčastějšího se hodnota zvýrazní. Cena se nepřepočítává - jde jen o informaci.
+- Lekce, která padne na vynechaný den, nevznikne (nejde ji vrátit křížkem). Ručně připnout lekci na vynechaný den lze.
 
 ### Sekce E: Globální nastavení nových kurzů
 
@@ -253,6 +305,11 @@ Zobrazí se zároveň se sekcí D.
   - **Zachovat offset** (výchozí) - pro každý kurz se vypočte `(původní StartDate - původní RegistrationEnd)` ve dnech, stejný offset se aplikuje na nový kurz vůči nové první lekci.
   - **Začátek první lekce** - `RegistrationEnd` = StartDate prvního termínu kurzu.
   - **N dní před začátkem** + input pro N - `RegistrationEnd` = StartDate prvního termínu - N dní.
+- **Hromadná úprava názvů** (`nameFind`, `nameReplace`): inputy „Najít v názvu" a „Nahradit za". Nahradí **všechny výskyty** textu v názvech všech nových kurzů (prostý text, rozlišuje velikost písmen, žádné regexy). Prázdné „Najít" = názvy beze změny. Typické použití: přepis prefixu období („AB/26" → „AB/27"). Platí pro všechny strategie.
+  - Pod inputy: „Upraví se název u X kurzů."
+  - Sekce D zobrazuje už upravené názvy (původní v tooltipu), změněné řádky mají drobnou značku.
+  - Výsledný název nesmí být prázdný - jinak blokující chyba u daného kurzu.
+  - Seskupení (sekce B/D) se počítá z **původních** názvů.
 
 ### Sekce F: Potvrzení a vytvoření
 
@@ -260,6 +317,7 @@ Vždy viditelná na spodku stránky.
 
 - Souhrn: **„Bude vytvořeno X kurzů s celkem Y lekcemi."**
 - Disabled tlačítko **„Vytvořit kurzy"** dokud není zadáno nové datum OD a alespoň jeden kurz není vyloučen.
+- Při strategii „Nový rozvrh" musí být navíc vyplněný konec bloku, resp. počet lekcí.
 - Po kliknutí: AJAX volání backendu, který sekvenčně vytváří kurzy (max 3 paralelně). Frontend ukazuje progress bar a aktuální stav („Vytvářím 5/23: Jóga začátečníci").
 - Při chybě u konkrétního kurzu: pokračovat dál, chybu zaznamenat do souhrnu.
 
@@ -305,6 +363,7 @@ PRO KAŽDOU lekci, která NENÍ ručně připnutá:
 Lekce, kterou uživatel ručně přepsal v sekci D, dostane atribut `isPinned: true` a `pinnedNewStart: <hodnota>`. Globální přepočet (při změně nového data OD nebo strategie) ji přeskočí.
 
 Tlačítko „obnovit automatický výpočet" u lekce smaže `isPinned` a `pinnedNewStart`, lekce se zpětně zapojí do globálního přepočtu.
+Při strategii „Nový rozvrh" se ruční úpravy a vyloučení drží na `rhythmLections`. Protože se lekce po změně parametrů generují znovu, nedají se spárovat s předchozími - **změna parametrů rytmu (začátek, konec/počet, vynechané dny) nebo přepnutí na jinou strategii `rhythmLections` zahodí**. Obsahují-li ruční úpravy nebo vyloučené lekce, frontend se nejdřív zeptá (sekce C). Ruční úpravy původních lekcí (posun) zůstávají nedotčené.
 
 ### 6.4 Vypočtený `RegistrationEnd` per kurz
 
@@ -333,7 +392,62 @@ nove_RegistrationEnd = nove_StartDate_kurzu - N*86400 sekund
 novyDO = MAX přes všechny ne-vyloučené lekce všech ne-vyloučených kurzů z nove_datum_lekce.endTime
 ```
 kde `endTime = newStart + LengthMinutes`.
+Při strategii „Nový rozvrh" stejně, jen z nevyloučených `rhythmLections` (u připnutých z `pinnedNewStart`).
 
+### 6.6 Strategie „Nový rozvrh podle týdenního rytmu"
+
+Místo posunu existujících lekcí se pro každý kurz vygeneruje nová řada lekcí z jeho týdenního rytmu. Řeší, co posun (6.1/6.2) neumí: jinou délku nového bloku a svátky/prázdniny, které v novém období padají na jiné dny. Díry po svátcích ze zdrojového období se nepřenášejí.
+
+Logika patří do `mapping.js` (pure funkce) a pokrývají ji testy v `mapping.test.html`.
+
+#### 6.6.1 Detekce rytmu (per kurz, po načtení)
+
+Kurz je **rytmický**, pokud pro **všechny** jeho původní lekce (bez ohledu na vyloučení v sekci D) platí, počítáno v Europe/Prague:
+- stejný den v týdnu,
+- stejný čas začátku (HH:mm),
+- stejná délka (minuty),
+- rozdíl kalendářních dat sousedních lekcí je kladný násobek 7 dní (mezery kvůli svátkům nevadí).
+
+Kurz s jedinou lekcí je rytmický. Kurz bez lekcí je nerytmický (není z čeho odvodit den a čas), takže blokuje strategii „Nový rozvrh", dokud se nevyloučí. Výsledek `rhythm = { weekday, time, lengthMinutes }`, jinak `null`. Kurzy s více lekcemi týdně (např. po + st) **nejsou podporované** - jsou nerytmické.
+
+#### 6.6.2 Generování lekcí
+
+```
+vstup: rhythm kurzu, newFrom (začátek bloku), rhythmEndMode, newTo | lectionCount, excludedDays
+
+d = první datum >= newFrom, jehož den v týdnu == rhythm.weekday
+lekce = []
+iterace = 0
+OPAKUJ:
+  pokud rhythmEndMode == 'endDate' a d > newTo: konec
+  pokud rhythmEndMode == 'count' a lekce.length == lectionCount: konec
+  pokud iterace >= 104: konec              // pojistka (2 roky)
+  pokud d neleží v žádném intervalu excludedDays:
+    lekce.push(d + rhythm.time)            // lokální čas Europe/Prague -> UTC
+  d = d + 7 kalendářních dní
+  iterace++
+```
+
+- Sčítání dní je kalendářní (čas lekce se zachová i přes změnu letního/zimního času), stejně jako u posunu.
+- Délka každé lekce = `rhythm.lengthMinutes`.
+- Kurz může vyjít s 0 lekcemi (např. celé období vynechané) - viz kapitola 8.
+- V režimu `count` mají kurzy stejný počet lekcí, ale můžou končit v různých týdnech. V režimu `endDate` končí ve stejném týdnu, ale počet lekcí se může lišit (sekce D na to upozorní).
+
+#### 6.6.3 RegistrationEnd a SingleLectionBookingFrom
+
+Beze změny proti 6.4 a sekci E. `nove_StartDate_kurzu` = první nevyloučená vygenerovaná lekce. U „Zachovat offset" se offset počítá z původního `StartDate` a `RegistrationEnd` kurzu.
+
+#### 6.6.4 Seznam státních svátků
+
+Reservanto má svátky natvrdo v kódu a API je nevystavuje (jen nepřímo: `/v1/WorkingHours/GetForPeriod` pro svátek nevrací pracovní dobu). Aplikace proto drží vlastní seznam ve `mapping.js`:
+
+**CZ:** 1. 1., Velký pátek, Velikonoční pondělí, 1. 5., 8. 5., 5. 7., 6. 7., 28. 9., 28. 10., 17. 11., 24. 12., 25. 12., 26. 12.
+
+**SK:** 1. 1., 6. 1., Velký pátek, Velikonoční pondělí, 1. 5., 8. 5., 5. 7., 29. 8., 15. 9., 1. 11., 24. 12., 25. 12., 26. 12.
+
+**Výjimky po letech:** pro SK se v roce 2026 neslaví 8. 5. a 15. 9. (konsolidační balíček). Seznam proto drží i tabulku výjimek ve tvaru `{ country, year, dates[] }` (svátky, které v daném roce odpadají), aby šly další změny doplnit bez úpravy logiky. Seznamy musí odpovídat kódu Reservanta.
+
+Velikonoční neděle se počítá algoritmem pro gregoriánský kalendář (Meeus/Jones/Butcher); Velký pátek = neděle − 2 dny, Velikonoční pondělí = neděle + 1 den. Svátky se jen vkládají do `excludedDays` tlačítkem v sekci C - generování o nich samo neví.
 ## 7. API integrace
 
 ### 7.1 Backend handlery (Razor Page handlery)
@@ -404,6 +518,7 @@ while (current <= to)
 Po načtení všech kurzů z bloků se aplikuje **klientský filtr**: kurz se zahrne, pokud jeho `StartDate >= sourceFrom AND EndDate <= sourceTo`.
 
 Důvod: kurz, který začal v prosinci a končí v lednu, by se vrátil v GetList pro lednový blok, ale uživatel ho nechce duplikovat (chce jen kurzy plně spadající do období).
+**Přesahující kurzy:** kurzy, které filtrem neprojdou, ale se zdrojovým obdobím se protínají (`StartDate <= sourceTo AND EndDate >= sourceFrom`), se nezahazují. Backend je vrátí také, s příznakem `isOverlapping: true`, a frontend je zobrazí zvlášť (sekce B). Blokový `Course/GetList` je vrací už teď, další volání `GetList` nejsou potřeba. Lekce (`Course/Get`) se načítají i pro ně, aby šly zahrnout bez čekání - počet volání `Course/Get` tím vzroste.
 
 ### 7.5 Načítání lekcí (`Course/Get`)
 
@@ -451,6 +566,9 @@ Response: `{ count, names }`, kde `names` je max prvních 5 názvů kurzů seřa
 - **API vrátí 403 (chybí oprávnění `Course_w`)** → zobrazit zřetelnou hlášku „Chybí oprávnění pro vytváření kurzů. Kontaktujte podporu Reservanta."
 - **Rate limiting (429)** → exponential backoff 1 s / 2 s / 4 s, max 3 retry. Řeší se centrálně ve `ReservantoClient` pro **všechna** volání API (čtení i zápis - `Course/GetList`, `Course/Get`, `Course/Create`), ne jen pro batch vytváření.
 - **Síťová chyba** → message v UI, nic se nevytvořilo, stav se neztratil (klient může zkusit znovu).
+- **Strategie „Nový rozvrh" a kurz s 0 vygenerovanými lekcemi** (celé období vynechané, konec bloku dřív než první den v týdnu kurzu) → kurz se v sekci D zobrazí s varováním „Nevznikne žádná lekce" a při vytváření se přeskočí (jako kurz s 0 lekcemi po vyloučení).
+- **Zahrnutý přesahující kurz při posunu** → kopíruje se celý; lekce, které by po posunu padly do minulosti, se v sekci D označí jako chybné a tlačítko „Vytvořit kurzy" je disabled, dokud je uživatel nevyloučí nebo nezmění nové datum OD.
+- **Změna výběru kurzů při strategii „Nový rozvrh"** → pokud tím mezi nevyloučené kurzy přibude nerytmický kurz, strategie se přepne na „Zachovat dny v týdnu" a zobrazí se hláška proč.
 
 ## 9. UX detaily
 
@@ -465,6 +583,7 @@ Response: `{ count, names }`, kde `names` je max prvních 5 názvů kurzů seřa
   a globální nastavení sekce E. Ukládá se při změně příslušné kontrolky a při „Načíst kurzy";
   při další návštěvě se hodnoty předvyplní. Nové datum OD z cookie se obnoví jen pokud je
   stále v budoucnu; zaměření jen pokud v dropdownu stále existuje.
+- Cookie `cd_prefs` navíc ukládá `rhythmEndMode` a `holidayCountry`. Uložená strategie „Nový rozvrh" se po načtení použije jen tehdy, když jsou všechny kurzy rytmické. Konec bloku, počet lekcí, vynechané dny a hromadná úprava názvů se **neukládají** (patří ke konkrétnímu bloku).
 - Responzivita: alespoň desktop a tablet. Mobile není priorita.
 
 ## 10. Bezpečnost
@@ -480,3 +599,8 @@ Response: `{ count, names }`, kde `names` je max prvních 5 názvů kurzů seřa
 1. **Registrace aplikace u Reservanta** (prerekvizita): získat `clientId` a zaregistrovat `redirectUrl` produkčního prostředí.
 2. **Audit logging** - kam loguje. Stačí soubor nebo do existující infrastruktury?
 3. **STT cache klíč** - pokud aplikace bude obsluhovat víc merchantů současně (různé session), STT se musí cachovat per session, ne globálně. (Pravděpodobně OK, session-bound cache je default.)
+4. **Fáze 2 (mimo současný rozsah): časová pravítka.** V sekci A pod datem OD/DO pás s řádkem pro každý „blok" kurzů zaměření za posledních ~12 měsíců (blok = kurzy se stejným týdnem začátku a stejným týdnem konce; stačí `StartDate`/`EndDate` z `Course/GetList`, bez `Course/Get`). Pruh ukazuje rozsah bloku a počet kurzů, tooltip názvy skupin; klik na pruh nastaví datum OD/DO, tažením jde vybrat vlastní rozsah. V sekci C obdobné pravítko pro cílové období: nové lekce, vynechané dny a existující kurzy. Podklady: dokument „Analýza kurzů – merchant 23210" v claude.ai projektu CourseDuplicator.
+
+## 12. Rozšíření z 13. 11. 2026
+
+Implementováno 13. 11. 2026 (seskupení kurzů, přesahující kurzy, strategie „Nový rozvrh podle týdenního rytmu" s vynechanými dny a svátky CZ/SK, hromadná úprava názvů) - závazný popis je v 4.2, 5, 6.6, 7.4, 8 a 9.
