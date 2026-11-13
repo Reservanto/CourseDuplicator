@@ -377,6 +377,53 @@
         test("názvy: prázdné Najít = beze změny", M.replaceInName('Jóga', '', 'X'), 'Jóga');
         test("názvy: nahrazení prázdným textem", M.replaceInName('Jóga 2026', ' 2026', ''), 'Jóga');
 
+        // ---- Časová pravítka (5A, 5C) ----
+        test("startOfWeek: středa 9. 9. 2026 -> pondělí 7. 9.", M.startOfWeek(new Date(2026, 8, 9, 18, 30)), new Date(2026, 8, 7));
+        test("startOfWeek: neděle 13. 9. 2026 patří k pondělí 7. 9.", M.startOfWeek(new Date(2026, 8, 13, 10)), new Date(2026, 8, 7));
+        test("startOfWeek: pondělí zůstává (půlnoc)", M.startOfWeek(new Date(2026, 8, 7, 8)), new Date(2026, 8, 7));
+        test("startOfWeek: přes změnu času (ne 1. 11. 2026 -> po 26. 10.)", M.startOfWeek(new Date(2026, 10, 1, 12)), new Date(2026, 9, 26));
+        test("dayKey", M.dayKey(new Date(2026, 0, 5, 23, 59)), '2026-01-05');
+
+        {
+            const c = (name, start, end) => ({ name, startDate: start, endDate: end });
+            // Podzim I: začátek 1. týden září, konec začátek listopadu; pololetí začíná stejně, končí v lednu.
+            const courses = [
+                c('AB/26 Plavání', new Date(2026, 8, 8, 16), new Date(2026, 10, 3, 17)),     // út 8. 9. - út 3. 11.
+                c('AB/26 Plavání', new Date(2026, 8, 12, 9), new Date(2026, 10, 7, 10)),     // so 12. 9. - so 7. 11.
+                c('AB/26 Kojenci', new Date(2026, 8, 7, 10), new Date(2026, 10, 2, 11)),     // po 7. 9. - po 2. 11.
+                c('AC/26 Cvičení', new Date(2026, 8, 9, 17), new Date(2027, 0, 27, 18)),     // pololetí, stejný týden začátku
+                c('BB/26 Plavání', new Date(2026, 10, 10, 16), new Date(2027, 0, 26, 17)),   // Podzim II
+            ];
+            const blocks = M.groupCourseBlocks(courses);
+            test("bloky: 3 bloky (stejný týden začátku, jiný týden konce = jiný blok)", blocks.length, 3);
+            test("bloky: první blok má 3 kurzy", blocks[0].courses.length, 3);
+            test("bloky: rozsah bloku od nejdřívějšího začátku", blocks[0].from, new Date(2026, 8, 7, 10));
+            test("bloky: rozsah bloku do nejpozdějšího konce", blocks[0].to, new Date(2026, 10, 7, 10));
+            test("bloky: pololetí je samostatný blok, při shodném začátku týdne řazený za kratším",
+                blocks[1].courses[0].name, 'AC/26 Cvičení');
+            test("bloky: Podzim II poslední", blocks[2].courses[0].name, 'BB/26 Plavání');
+            test("bloky: názvy skupin podle počtu kurzů",
+                blocks[0].names.map((n) => `${n.name}×${n.count}`).join(', '), 'AB/26 Plavání×2, AB/26 Kojenci×1');
+            test("bloky: prázdný vstup", M.groupCourseBlocks([]).length, 0);
+        }
+
+        {
+            const counts = M.countByDay([
+                new Date(2026, 8, 8, 16), new Date(2026, 8, 7, 9), new Date(2026, 8, 8, 17, 30), new Date(2026, 8, 8, 8),
+            ]);
+            test("countByDay: počet dnů", counts.length, 2);
+            test("countByDay: seřazeno, půlnoc", counts[0].day, new Date(2026, 8, 7));
+            test("countByDay: 3 lekce v úterý", counts[1].count, 3);
+        }
+
+        test("monthStarts: 15. 8. - 3. 11. 2026 = září, říjen, listopad",
+            M.monthStarts(new Date(2026, 7, 15), new Date(2026, 10, 3)).map(fmt).join(', '),
+            [new Date(2026, 8, 1), new Date(2026, 9, 1), new Date(2026, 10, 1)].map(fmt).join(', '));
+        test("monthStarts: začátek přesně 1. dne se počítá",
+            M.monthStarts(new Date(2026, 8, 1), new Date(2026, 8, 30)).length, 1);
+        test("monthStarts: přes přelom roku",
+            M.monthStarts(new Date(2026, 10, 20), new Date(2027, 1, 2)).map((d) => d.getMonth() + 1).join(','), '12,1,2');
+
         // ---- souhrn ----
         const summary = document.getElementById('summary');
         summary.textContent = failed === 0

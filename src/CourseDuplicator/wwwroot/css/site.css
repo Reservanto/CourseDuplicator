@@ -449,6 +449,299 @@ html, body {
     color: var(--color-danger);
 }
 
+/* ---------- Časová pravítka (sekce A a C, ruler.js) ---------- */
+
+.duplicator__ruler-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--rds-space-3);
+    /* Šířka pravítka řídí sloupec popisků řádků (container query níže). */
+    container-type: inline-size;
+}
+
+.duplicator__ruler-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--rds-space-6);
+    flex-wrap: wrap;
+}
+
+.ruler {
+    --ruler-label-width: 0px;
+    --ruler-row-height: 22px;
+    display: grid;
+    grid-template-columns: var(--ruler-label-width) minmax(0, 1fr);
+    column-gap: var(--rds-space-4);
+    padding: var(--rds-space-4) var(--rds-space-6) var(--rds-space-5);
+    border: 1px solid var(--color-border);
+    border-radius: var(--control-radius);
+    background: var(--color-surface);
+    font-size: var(--rds-text-xs);
+    user-select: none;
+    /* Popisky pruhů u okraje osy nesmí přetéct kartu. */
+    overflow: hidden;
+}
+
+/* Sloupec popisků řádků se zužuje s pravítkem, osa si drží většinu šířky. */
+.ruler--labels {
+    --ruler-label-width: clamp(4.5rem, 20%, 8.5rem);
+}
+
+/* Velmi úzké pravítko: popisky řádků pryč (barvy vysvětluje legenda), celá šířka pro osu. */
+@container (max-width: 420px) {
+    .ruler--labels {
+        --ruler-label-width: 0px;
+        column-gap: 0;
+    }
+
+    .ruler--labels .ruler__label {
+        visibility: hidden;
+    }
+}
+
+.ruler--selectable .ruler__track,
+.ruler--selectable .ruler__axis {
+    cursor: crosshair;
+}
+
+.ruler.is-dragging,
+.ruler.is-dragging * {
+    cursor: ew-resize;
+}
+
+.ruler__label {
+    grid-column: 1;
+    align-self: center;
+    overflow: hidden;
+    color: var(--color-ink-3);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.ruler__label--axis {
+    grid-row: 1;
+}
+
+.ruler__axis {
+    grid-row: 1;
+    grid-column: 2;
+    position: relative;
+    height: 18px;
+    margin-bottom: var(--rds-space-2);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.ruler__month {
+    position: absolute;
+    top: 0;
+    padding-left: var(--rds-space-2);
+    color: var(--color-ink-3);
+    white-space: nowrap;
+}
+
+/* Popisek měsíce, který se na osu nevejde (ruler.js proředí popisky podle šířky) */
+.ruler__month.is-hidden {
+    visibility: hidden;
+}
+
+/* Podklad přes všechny řádky: mřížka, pásy, výběr, dnešek (řádek gridu nastavuje JS) */
+.ruler__overlay {
+    grid-column: 2;
+    position: relative;
+    pointer-events: none;
+}
+
+.ruler__gridline {
+    position: absolute;
+    top: calc(-1 * var(--rds-space-2));
+    bottom: 0;
+    border-left: 1px solid var(--color-border);
+}
+
+.ruler__band {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: var(--color-warning-soft);
+}
+
+.ruler__selection {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: var(--color-accent-soft);
+    border-left: 2px solid var(--color-accent);
+    border-right: 2px solid var(--color-accent);
+}
+
+.ruler__today {
+    position: absolute;
+    top: calc(-1 * var(--rds-space-4));
+    bottom: 0;
+    z-index: 3;
+    border-left: 2px dashed var(--color-danger);
+}
+
+.ruler__track {
+    grid-column: 2;
+    position: relative;
+    height: var(--ruler-row-height);
+}
+
+.ruler__track--tall {
+    --ruler-row-height: 36px;
+}
+
+.ruler__note {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    padding-left: var(--rds-space-3);
+    color: var(--color-ink-3);
+}
+
+/* Pruh bloku kurzů */
+.ruler__bar {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    z-index: 1;
+    min-width: 3px;
+    padding: 0;
+    border: 1px solid var(--color-accent);
+    border-radius: var(--rds-radius-sm);
+    background: var(--color-accent-muted);
+    font: inherit;
+}
+
+button.ruler__bar {
+    cursor: pointer;
+}
+
+button.ruler__bar:hover,
+button.ruler__bar:focus-visible {
+    background: var(--color-accent);
+}
+
+button.ruler__bar:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--color-focus-halo);
+}
+
+.ruler__bar.is-selected {
+    background: var(--color-accent);
+    box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-accent);
+}
+
+/* Existující kurzy v cílovém období (sekce C) */
+.ruler__bar--existing {
+    border-color: var(--color-ink-3);
+    background: var(--color-surface);
+}
+
+/* Vynechané dny (sekce C) */
+.ruler__bar--excluded {
+    border-color: var(--color-warning);
+    background: var(--color-warning-soft);
+}
+
+.ruler__bar-text {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    padding: 0 var(--rds-space-3);
+    color: var(--color-ink-2);
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+/* Popisek uvnitř pruhu, když vedle něj není místo */
+.ruler__bar-text--inside {
+    color: var(--color-ink);
+}
+
+/* Histogram lekcí po dnech (sekce C) */
+.ruler__column {
+    position: absolute;
+    bottom: 0;
+    z-index: 1;
+    border-radius: 1px 1px 0 0;
+    background: var(--color-accent);
+    box-shadow: inset -1px 0 0 var(--color-surface);
+}
+
+.ruler__column--past {
+    background: var(--color-danger);
+}
+
+/* Svátek (sekce C): plný = padnou na něj lekce, obrys = bez lekcí */
+.ruler__marker {
+    position: absolute;
+    top: 50%;
+    z-index: 2;
+    width: 10px;
+    height: 10px;
+    margin: -5px 0 0 -5px;
+    border: 2px solid var(--color-ink-3);
+    border-radius: 2px;
+    background: var(--color-surface);
+    transform: rotate(45deg);
+}
+
+.ruler__marker--hit {
+    border-color: var(--color-danger);
+    background: var(--color-danger);
+}
+
+.ruler__legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--rds-space-3) var(--rds-space-8);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--rds-text-xs);
+    color: var(--color-ink-3);
+}
+
+.ruler__legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--rds-space-3);
+}
+
+.ruler__swatch {
+    display: inline-block;
+    width: 14px;
+    height: 10px;
+    border-radius: 2px;
+}
+
+.ruler__swatch--lections { background: var(--color-accent); }
+.ruler__swatch--past { background: var(--color-danger); }
+.ruler__swatch--excluded { background: var(--color-warning-soft); border: 1px solid var(--color-warning); }
+.ruler__swatch--existing { background: var(--color-surface); border: 1px solid var(--color-ink-3); }
+.ruler__swatch--target { background: var(--color-accent-soft); border-left: 2px solid var(--color-accent); border-right: 2px solid var(--color-accent); }
+.ruler__swatch--today { width: 0; height: 12px; border-left: 2px dashed var(--color-danger); border-radius: 0; }
+
+.ruler__swatch--holiday,
+.ruler__swatch--holiday-hit {
+    width: 8px;
+    height: 8px;
+    border: 2px solid var(--color-ink-3);
+    transform: rotate(45deg);
+}
+
+.ruler__swatch--holiday-hit {
+    border-color: var(--color-danger);
+    background: var(--color-danger);
+}
+
 /* ---------- Sekce D / F: hlášky ---------- */
 
 /* Hláška nad tabulkou uvnitř karty (tabulka je flush) */

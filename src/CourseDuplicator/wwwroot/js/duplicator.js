@@ -5,6 +5,7 @@
     'use strict';
 
     const Mapping = window.CourseDuplicator.Mapping;
+    const Ruler = window.CourseDuplicator.Ruler;
 
     // ---- Globální state (spec 4.2) ----
     const state = {
@@ -34,10 +35,18 @@
     // Pro ladění v konzoli
     window.CourseDuplicator.state = state;
 
-    // Čistě UI stav (není součástí spec state): rozbalené skupiny a bloky.
+    // Čistě UI stav (není součástí spec state): rozbalené skupiny a bloky, data časových pravítek.
     const ui = {
         openGroups: new Set(),
         overlapOpen: false,
+        // Pravítko sekce A: { segmentId, from, to, blocks } | null; cache podle zaměření.
+        sourceBlocks: null,
+        sourceBlocksCache: new Map(),
+        // Existující kurzy v cílovém období pro pravítko sekce C (z CheckPeriod):
+        // { status: 'loading' | 'done' | 'error', courses: [] } | null
+        periodCourses: null,
+        // Interval cílového období z posledního přepočtu (efektivní OD / začátek bloku - vypočtené DO).
+        targetPeriod: null,
     };
 
     // Strategie „Nový rozvrh" z cookie čeká, až se načtou kurzy (použije se, jen když jsou rytmické - spec 9).
@@ -50,6 +59,9 @@
     const segmentSingle = el('segment-single');
     const sourceFromInput = el('source-from');
     const sourceToInput = el('source-to');
+    const sourceRulerBlock = el('source-ruler-block');
+    const sourceRuler = el('source-ruler');
+    const sourceRulerStatus = el('source-ruler-status');
     const loadButton = el('load-courses-btn');
     const loadSpinner = el('load-spinner');
     const loadStatus = el('load-status');
@@ -88,6 +100,9 @@
     const effectiveFromLabel = el('effective-from-label');
     const effectiveFromEl = el('effective-from');
     const computedToEl = el('computed-to');
+    const targetRulerBlock = el('target-ruler-block');
+    const targetRuler = el('target-ruler');
+    const legendExcluded = el('legend-excluded');
     const periodCheck = el('period-check');
     const sectionDetail = el('section-detail');
     const lectionCountWarning = el('lection-count-warning');
@@ -147,6 +162,7 @@
 
     const api = {
         getSegments: () => fetchJson('/?handler=Segments'),
+        getCourseBlocks: (segmentId) => fetchJson(`/?handler=CourseBlocks&segmentId=${encodeURIComponent(segmentId)}`),
         loadCourses: (segmentId, from, to) => postJson('/?handler=LoadCourses', { segmentId, from, to }),
         checkPeriod: (segmentId, from, to) => postJson('/?handler=CheckPeriod', { segmentId, from, to }),
         createCourses: (body) => postJson('/?handler=CreateCourses', body),
@@ -185,6 +201,18 @@
         const fromText = `${from.getDate()}. ${from.getMonth() + 1}.${sameYear ? '' : ` ${from.getFullYear()}`}`;
         return `${fromText} – ${to.getDate()}. ${to.getMonth() + 1}. ${to.getFullYear()}`;
     };
+
+    /** Krátký rozsah bez dne v týdnu: "7. 9. – 7. 11. 2026", přes rok "30. 11. 2026 – 25. 1. 2027". */
+    const formatShortRange = (from, to) => {
+        const sameYear = from.getFullYear() === to.getFullYear();
+        return `${from.getDate()}. ${from.getMonth() + 1}.${sameYear ? '' : ` ${from.getFullYear()}`}`
+            + ` – ${to.getDate()}. ${to.getMonth() + 1}. ${to.getFullYear()}`;
+    };
+
+    /** Česká množná čísla: plural(3, 'kurz', 'kurzy', 'kurzů') -> 'kurzy'. */
+    const plural = (n, one, few, many) => (n === 1 ? one : (n >= 2 && n <= 4 ? few : many));
+    const coursesText = (n) => `${n} ${plural(n, 'kurz', 'kurzy', 'kurzů')}`;
+    const lectionsText = (n) => `${n} ${plural(n, 'lekce', 'lekce', 'lekcí')}`;
 
     /** Hodnota pro input[type=date]: "2026-01-05" ('' pro null). */
     const toDateInputValue = (date) => date
@@ -484,9 +512,132 @@
                 segmentSingle.textContent = `Zaměření: ${segments[0].name}`;
                 segmentSingle.hidden = false;
             }
+            loadSourceBlocks();
         } catch (error) {
             showError(`Nepodařilo se načíst zaměření: ${error.message}`);
         }
+    };
+
+    // ---- Sekce A: časové pravítko bloků kurzů (spec 5A) ----
+    let sourceBlocksSeq = 0;
+
+    /** Max počet názvů skupin v tooltipu pruhu. */
+    const BLOCK_TITLE_MAX_NAMES = 12;
+
+    /** Tooltip bloku: rozsah, počet kurzů a názvy skupin (nejčastější první). */
+    const blockTitle = (block) => {
+        const lines = [
+            `${formatDate(block.from)} – ${formatDate(block.to)}`,
+            `${coursesText(block.courses.length)}, ${block.names.length} ${plural(block.names.length, 'název', 'názvy', 'názvů')}`,
+        ];
+        for (const { name, count } of block.names.slice(0, BLOCK_TITLE_MAX_NAMES)) {
+            lines.push(count > 1 ? `${name} (×${count})` : name);
+        }
+        const rest = block.names.length - BLOCK_TITLE_MAX_NAMES;
+        if (rest > 0) lines.push(`… a ${rest} dalších`);
+        return lines.join('\n');
+    };
+
+    const toBlockCourse = (c) => ({
+        id: c.id,
+        name: c.name ?? '',
+        startDate: new Date(c.startDate * 1000),
+        endDate: new Date(c.endDate * 1000),
+    });
+
+    /** Načte kurzy zaměření za poslední rok (bez Course/Get) a seskupí je do bloků. */
+    const loadSourceBlocks = async () => {
+        const segmentId = state.segmentId;
+        const seq = ++sourceBlocksSeq;
+        if (!segmentId) {
+            sourceRulerBlock.hidden = true;
+            return;
+        }
+
+        const cached = ui.sourceBlocksCache.get(segmentId);
+        if (cached) {
+            ui.sourceBlocks = cached;
+            renderSourceRuler();
+            return;
+        }
+
+        ui.sourceBlocks = null;
+        sourceRulerBlock.hidden = false;
+        sourceRuler.replaceChildren();
+        sourceRulerStatus.textContent = 'Načítám přehled kurzů za poslední rok…';
+        sourceRulerStatus.hidden = false;
+        try {
+            const result = await api.getCourseBlocks(segmentId);
+            if (seq !== sourceBlocksSeq) return; // mezitím se změnilo zaměření
+            const data = {
+                segmentId,
+                from: new Date(result.from * 1000),
+                to: new Date(result.to * 1000),
+                blocks: Mapping.groupCourseBlocks(result.courses.map(toBlockCourse)),
+            };
+            ui.sourceBlocksCache.set(segmentId, data);
+            ui.sourceBlocks = data;
+            renderSourceRuler();
+        } catch (error) {
+            if (seq !== sourceBlocksSeq) return;
+            sourceRulerStatus.textContent = `Přehled kurzů za poslední rok se nepodařilo načíst: ${error.message}`;
+        }
+    };
+
+    /** Nastaví datum OD/DO sekce A (klik na pruh, tažení po pravítku). */
+    const setSourceRange = (from, to) => {
+        sourceFromInput.value = toDateInputValue(from);
+        sourceToInput.value = toDateInputValue(to);
+        loadError.hidden = true;
+        savePrefs();
+        renderSourceRuler();
+    };
+
+    const renderSourceRuler = () => {
+        const data = ui.sourceBlocks;
+        if (!data) return;
+        sourceRulerBlock.hidden = false;
+
+        if (data.blocks.length === 0) {
+            sourceRuler.replaceChildren();
+            sourceRulerStatus.textContent = 'Za poslední rok tu nejsou žádné kurzy.';
+            sourceRulerStatus.hidden = false;
+            return;
+        }
+        sourceRulerStatus.hidden = true;
+
+        // Osa po celých měsících; bloky začínají v okně, ale můžou končit za ním.
+        const latestEnd = data.blocks.reduce((max, b) => (b.to > max ? b.to : max), data.to);
+        const axisFrom = new Date(data.from.getFullYear(), data.from.getMonth(), 1);
+        const axisTo = new Date(latestEnd.getFullYear(), latestEnd.getMonth() + 1, 0);
+
+        const selectedFrom = parseDateInput(sourceFromInput, false);
+        const selectedTo = parseDateInput(sourceToInput, false);
+        const selection = selectedFrom && selectedTo && selectedFrom <= selectedTo
+            ? { from: selectedFrom, to: selectedTo }
+            : null;
+
+        Ruler.render(sourceRuler, {
+            from: axisFrom,
+            to: axisTo,
+            ariaLabel: 'Bloky kurzů za poslední rok',
+            showLabels: false,
+            today: new Date(),
+            selection,
+            rows: data.blocks.map((block) => ({
+                items: [{
+                    kind: 'bar',
+                    from: block.from,
+                    to: block.to,
+                    text: `${coursesText(block.courses.length)} · ${formatShortRange(block.from, block.to)}`,
+                    title: blockTitle(block),
+                    selected: selection !== null
+                        && Mapping.isSameDay(selection.from, block.from) && Mapping.isSameDay(selection.to, block.to),
+                    onClick: () => setSourceRange(block.from, block.to),
+                }],
+            })),
+            onRangeSelect: setSourceRange,
+        });
     };
 
     // ---- Sekce A -> B: načtení kurzů ----
@@ -586,6 +737,7 @@
             effectiveFromEl.textContent = '–';
             computedToEl.textContent = '–';
             schedulePeriodCheck(null, null);
+            targetRulerBlock.hidden = true;
             updateCreateSection();
             return;
         }
@@ -608,6 +760,8 @@
         computedToEl.textContent = periodEnd ? formatDate(periodEnd) : '–';
 
         schedulePeriodCheck(periodFrom, periodEnd);
+        ui.targetPeriod = { from: periodFrom, to: periodEnd };
+        renderTargetRuler();
 
         renderDetail();
         renderNameSummary();
@@ -702,6 +856,7 @@
             periodCheckSeq++;
             periodCheck.hidden = true;
             lastPeriodCheckKey = null;
+            ui.periodCourses = null;
             return;
         }
         // Beze změny zaměření/dat kontrolu neopakuj - jinak hláška o načítání
@@ -711,6 +866,7 @@
         if (key === lastPeriodCheckKey) return;
         clearTimeout(periodCheckTimer);
         lastPeriodCheckKey = key;
+        ui.periodCourses = { status: 'loading', courses: [] };
         periodCheckTimer = setTimeout(() => checkNewPeriod(from, to), 500);
     };
 
@@ -722,6 +878,8 @@
         try {
             const result = await api.checkPeriod(state.segmentId, toUnix(from), toUnix(to));
             if (seq !== periodCheckSeq) return; // mezitím přišel novější požadavek
+            ui.periodCourses = { status: 'done', courses: (result.courses ?? []).map(toBlockCourse) };
+            renderTargetRuler();
             if (result.count > 0) {
                 const names = result.names.join(', ');
                 const ellipsis = result.count > result.names.length ? ', …' : '';
@@ -734,9 +892,131 @@
             }
         } catch (error) {
             if (seq !== periodCheckSeq) return;
+            ui.periodCourses = { status: 'error', courses: [] };
+            renderTargetRuler();
             periodCheck.classList.add('duplicator__period-check--warning');
             periodCheck.textContent = `Kontrolu nového období se nepodařilo provést: ${error.message}`;
         }
+    };
+
+    // ---- Sekce C: časové pravítko cílového období (spec 5C) ----
+
+    /**
+     * Pravítko cílového období: nové lekce po dnech, svátky a vynechané dny, existující kurzy
+     * (bloky z CheckPeriod). Jen pro čtení. Osa = cílové období ± týden, po celých týdnech.
+     */
+    const renderTargetRuler = () => {
+        const period = ui.targetPeriod;
+        if (!hasTargetInput() || !period?.from) {
+            targetRulerBlock.hidden = true;
+            return;
+        }
+        const rhythm = isRhythm();
+
+        const starts = [];
+        const pastDays = new Set();
+        for (const course of state.courses) {
+            if (course.isExcluded) continue;
+            for (const { start } of activeLections(course)) {
+                starts.push(start);
+                if (isPast(start)) pastDays.add(Mapping.dayKey(start));
+            }
+        }
+        const perDay = Mapping.countByDay(starts);
+        const countOf = new Map(perDay.map((d) => [Mapping.dayKey(d.day), d.count]));
+
+        // Konec cílového období: u „Nový rozvrh" s datem konce konec bloku, jinak vypočtené DO.
+        const targetTo = rhythm && state.rhythmEndMode === 'endDate' && state.newTo ? state.newTo : period.to;
+        let rangeFrom = period.from;
+        let rangeTo = targetTo ?? period.from;
+        if (perDay.length > 0) {
+            if (perDay[0].day < rangeFrom) rangeFrom = perDay[0].day;
+            if (perDay[perDay.length - 1].day > rangeTo) rangeTo = perDay[perDay.length - 1].day;
+        }
+        const axisFrom = Mapping.addDays(Mapping.startOfWeek(rangeFrom), -7);
+        const axisTo = Mapping.addDays(Mapping.startOfWeek(rangeTo), 13);
+
+        // 1) Nové lekce: sloupec za den, výška podle počtu lekcí.
+        const maxCount = perDay.reduce((max, d) => Math.max(max, d.count), 0);
+        const lectionRow = {
+            label: 'Nové lekce',
+            className: 'ruler__track--tall',
+            note: perDay.length === 0 ? 'Nevznikne žádná lekce.' : undefined,
+            items: perDay.map(({ day, count }) => {
+                const past = pastDays.has(Mapping.dayKey(day));
+                return {
+                    kind: 'column',
+                    from: day,
+                    value: count / maxCount,
+                    className: past ? 'ruler__column--past' : '',
+                    title: `${formatDate(day)}: ${lectionsText(count)}${past ? ' (v minulosti)' : ''}`,
+                };
+            }),
+        };
+
+        // 2) Svátky (+ vynechané dny u „Nový rozvrh"): plná značka = ve svátek padnou lekce.
+        const excludedItems = rhythm
+            ? state.excludedDays.map((range) => ({
+                kind: 'bar',
+                from: range.from,
+                to: range.to,
+                className: 'ruler__bar--excluded',
+                title: `Vynechané: ${formatDayRange(range.from, range.to)}${range.label ? ` (${range.label})` : ''}`,
+            }))
+            : [];
+        const holidayItems = Mapping.holidaysInRange(state.holidayCountry, axisFrom, axisTo).map((holiday) => {
+            const count = countOf.get(Mapping.dayKey(holiday.date)) ?? 0;
+            return {
+                kind: 'marker',
+                from: holiday.date,
+                className: count > 0 ? 'ruler__marker--hit' : '',
+                title: `${holiday.label}, ${formatDate(holiday.date)}: `
+                    + (count > 0 ? `padne na něj ${lectionsText(count)}` : 'bez lekcí'),
+            };
+        });
+        const offRow = {
+            label: rhythm ? 'Vynechané dny, svátky' : `Svátky (${state.holidayCountry})`,
+            items: [...excludedItems, ...holidayItems],
+            note: excludedItems.length + holidayItems.length === 0
+                ? (rhythm ? 'Žádné vynechané dny ani svátky.' : 'Žádné svátky.')
+                : undefined,
+        };
+
+        // 3) Existující kurzy v cílovém období (bloky jako v sekci A).
+        const existing = ui.periodCourses;
+        let existingRows;
+        if (!existing || existing.status === 'loading') {
+            existingRows = [{ label: 'Existující kurzy', note: 'Kontroluji…' }];
+        } else if (existing.status === 'error') {
+            existingRows = [{ label: 'Existující kurzy', note: 'Nepodařilo se zjistit.' }];
+        } else if (existing.courses.length === 0) {
+            existingRows = [{ label: 'Existující kurzy', note: 'Žádné.' }];
+        } else {
+            existingRows = Mapping.groupCourseBlocks(existing.courses).map((block, index) => ({
+                label: index === 0 ? 'Existující kurzy' : '',
+                items: [{
+                    kind: 'bar',
+                    from: block.from,
+                    to: block.to,
+                    className: 'ruler__bar--existing',
+                    text: `${coursesText(block.courses.length)} · ${formatShortRange(block.from, block.to)}`,
+                    title: blockTitle(block),
+                }],
+            }));
+        }
+
+        targetRulerBlock.hidden = false;
+        legendExcluded.hidden = !rhythm;
+        Ruler.render(targetRuler, {
+            from: axisFrom,
+            to: axisTo,
+            ariaLabel: 'Cílové období na časové ose',
+            showLabels: true,
+            today: new Date(),
+            selection: targetTo ? { from: period.from, to: targetTo } : null,
+            bands: excludedItems.map((item) => ({ from: item.from, to: item.to, title: item.title })),
+            rows: [lectionRow, offRow, ...existingRows],
+        });
     };
 
     // ---- Společné stavební bloky tabulek ----
@@ -1529,7 +1809,16 @@
     segmentSelect.addEventListener('change', () => {
         state.segmentId = Number(segmentSelect.value);
         savePrefs();
+        loadSourceBlocks();
     });
+
+    // Ruční změna data OD/DO posune výběr na pravítku sekce A.
+    for (const input of [sourceFromInput, sourceToInput]) {
+        input.addEventListener('change', () => {
+            savePrefs();
+            renderSourceRuler();
+        });
+    }
 
     newFromInput.addEventListener('change', async () => {
         const selected = parseDateInput(newFromInput, false);

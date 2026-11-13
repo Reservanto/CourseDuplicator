@@ -207,6 +207,15 @@ Aplikace je **jedna stránka s progresivním odhalováním sekcí**, ne klasick�
 
 - Dropdown **Zaměření** (pokud má merchant jen jedno, automaticky předvybráno a sekce je sbalená).
 - Inputy **datum OD** a **datum DO** zdrojového období.
+- **Časové pravítko „Bloky kurzů za poslední rok"** (pod daty OD/DO, zobrazí se po výběru zaměření):
+  - Data: handler `CourseBlocks` (7.1) - kurzy zaměření, které **začínají** v okně od pondělí týdne, do kterého padne dnešek − 12 měsíců, do konce týdne, do kterého padne dnešek + 3 měsíce (Europe/Prague). Okno je zarovnané na celé týdny, aby krajní bloky nebyly useknuté. Stačí `Course/GetList`, bez `Course/Get`. Frontend výsledek drží v cache podle zaměření (načítá se znovu jen po reloadu stránky).
+  - **Blok** = kurzy se stejným týdnem začátku (`StartDate`) a stejným týdnem konce (`EndDate`), týden po–ne v Europe/Prague (`groupCourseBlocks` v `mapping.js`). Pololetní kurz, který začíná stejně jako krátký blok, ale končí jindy, je tak samostatný blok.
+  - Osa po celých měsících (od 1. dne měsíce začátku okna do konce měsíce nejpozdějšího konce bloku), svislá čára „dnes". **Každý blok má vlastní řádek**, seřazeno podle začátku.
+  - Pruh = rozsah bloku (nejdřívější `StartDate` – nejpozdější `EndDate`), vedle něj popisek „44 kurzů · 7. 9. – 7. 11. 2026". Tooltip: rozsah s dny v týdnu, počet kurzů a různých názvů a názvy skupin s počty („AB/26 Plavání (×9)"), nejčastější první, max 12.
+  - **Klik na pruh** (i klávesnicí - pruh je tlačítko) nastaví datum OD = den začátku a DO = den konce bloku. Kurzy se nenačítají automaticky.
+  - **Tažením** po pravítku (myší, aspoň 4 px) jde vybrat vlastní rozsah po celých dnech; tažení, které skončí nad pruhem, pruh nevybere.
+  - Aktuální rozsah OD–DO je na pravítku zvýrazněný; pruh, jehož rozsah se s ním přesně shoduje, je označený jako vybraný. Ruční změna dat výběr posune.
+  - Chyba načtení pravítka nic neblokuje (zobrazí se jen hláška), bez kurzů: „Za poslední rok tu nejsou žádné kurzy."
 - Tlačítko **„Načíst kurzy"**.
 
 Po stisknutí: backend vrátí seznam kurzů včetně všech lekcí. Stav se uloží do JS objektu `state.sourceCourses[]`.
@@ -260,6 +269,12 @@ Zobrazí se, jakmile je v sekci B aspoň jeden kurz.
   - **Neúplné parametry** (chybí konec bloku / počet lekcí, konec bloku < začátek, počet mimo 1–52) se chovají jako nezadané nové datum OD: zobrazí se chyba u pole, sekce D/E se skryjí, vypočtená data jsou „–" a v sekci F je hláška „Zadejte konec nového bloku." resp. „Zadejte počet lekcí nového bloku.".
   - **Vypočtené datum DO** = poslední vygenerovaná lekce (6.5); v režimu „Datum konce" je vždy ≤ konec bloku.
   - Kontrola obsazenosti (`CheckPeriod`) se volá pro interval začátek bloku – vypočtené DO.
+- **Časové pravítko „Cílové období na časové ose"** (pod vypočtenými daty, jen pro čtení; zobrazí se, jakmile jsou zadané vstupy cílového období, tj. současně se sekcí D):
+  - Osa: cílové období (efektivní OD, resp. začátek bloku – vypočtené DO, u „Nový rozvrh" s datem konce až konec bloku), rozšířené o lekce mimo něj (připnuté), ± 1 týden, po celých týdnech. Cílové období je zvýrazněné, svislá čára „dnes".
+  - Řádek **Nové lekce**: sloupec za každý den s lekcí, výška podle počtu nevyloučených lekcí nevyloučených kurzů v daný den (aktuální strategie, včetně připnutých). Den s lekcí v minulosti je červený. Tooltip „8. 2. 2027 (pondělí): 7 lekcí".
+  - Řádek **Svátky** (u „Nový rozvrh" **Vynechané dny, svátky**): státní svátky zvolené země (`holidayCountry`, 6.6.4) na ose jako značky - plná červená = padnou na něj nové lekce (tooltip s počtem), prázdná = bez lekcí. U „Nový rozvrh" navíc vynechané dny jako pruhy a jako podbarvení přes všechny řádky.
+  - Řádky **Existující kurzy**: kurzy z kontroly obsazenosti (`CheckPeriod`, 7.7) seskupené do bloků stejně jako v sekci A, řádek na blok, s popiskem a tooltipem jako v sekci A. Během kontroly „Kontroluji…", bez kurzů „Žádné.".
+  - Pod pravítkem legenda (položka „Vynechané dny" jen u „Nový rozvrh").
 - **Validace: nové datum OD musí být v budoucnu** (> now). Datum v minulosti zobrazí chybu
   a chová se jako nezadané (sekce D/E se skryjí, tlačítko „Vytvořit kurzy" je disabled).
   Date input má `min` nastavené na zítřek.
@@ -457,6 +472,7 @@ Aplikace má jednu Razor Page (`Pages/Index.cshtml`) s těmito handlery:
 | Handler | URL | Volá Reservanto API |
 |---|---|---|
 | `OnGetSegmentsAsync` | `GET /?handler=Segments` | `POST /v1/Segment/GetList` |
+| `OnGetCourseBlocksAsync(segmentId)` | `GET /?handler=CourseBlocks&segmentId=42` | `POST /v1/Course/GetList` (po měsíčních blocích), bez `Course/Get` - pravítko sekce A, response `{ from, to, courses: [{ id, name, startDate, endDate }] }` |
 | `OnPostLoadCoursesAsync(LoadRequest)` | `POST /?handler=LoadCourses` | `POST /v1/Course/GetList` (po měsíčních blocích) + per kurz `POST /v1/Course/Get` |
 | `OnPostCheckPeriodAsync(CheckPeriodRequest)` | `POST /?handler=CheckPeriod` | `POST /v1/Course/GetList` (po měsíčních blocích) |
 | `OnPostCreateCoursesAsync(CreateRequest)` | `POST /?handler=CreateCourses` | Pro každý kurz `POST /v1/Course/Create` |
@@ -556,7 +572,9 @@ Request: `{ segmentId, from, to }` (UnixTimestamp). Backend načte kurzy přes b
 (`StartDate <= to AND EndDate >= from`) - na rozdíl od `LoadCourses` se nepožaduje plné
 spadnutí do období (kurz přesahující hranici se počítá taky).
 
-Response: `{ count, names }`, kde `names` je max prvních 5 názvů kurzů seřazených podle začátku.
+Response: `{ count, names, courses }`, kde `names` je max prvních 5 názvů kurzů seřazených podle začátku
+a `courses` všechny protínající kurzy jako `{ id, name, startDate, endDate }` (UnixTimestamp) pro
+časové pravítko sekce C.
 
 ## 8. Edge cases a chyby
 
@@ -599,8 +617,16 @@ Response: `{ count, names }`, kde `names` je max prvních 5 názvů kurzů seřa
 1. **Registrace aplikace u Reservanta** (prerekvizita): získat `clientId` a zaregistrovat `redirectUrl` produkčního prostředí.
 2. **Audit logging** - kam loguje. Stačí soubor nebo do existující infrastruktury?
 3. **STT cache klíč** - pokud aplikace bude obsluhovat víc merchantů současně (různé session), STT se musí cachovat per session, ne globálně. (Pravděpodobně OK, session-bound cache je default.)
-4. **Fáze 2 (mimo současný rozsah): časová pravítka.** V sekci A pod datem OD/DO pás s řádkem pro každý „blok" kurzů zaměření za posledních ~12 měsíců (blok = kurzy se stejným týdnem začátku a stejným týdnem konce; stačí `StartDate`/`EndDate` z `Course/GetList`, bez `Course/Get`). Pruh ukazuje rozsah bloku a počet kurzů, tooltip názvy skupin; klik na pruh nastaví datum OD/DO, tažením jde vybrat vlastní rozsah. V sekci C obdobné pravítko pro cílové období: nové lekce, vynechané dny a existující kurzy. Podklady: dokument „Analýza kurzů – merchant 23210" v claude.ai projektu CourseDuplicator.
+4. ~~**Fáze 2: časová pravítka.**~~ Implementováno, viz kapitola 13.
 
 ## 12. Rozšíření z 13. 11. 2026
 
 Implementováno 13. 11. 2026 (seskupení kurzů, přesahující kurzy, strategie „Nový rozvrh podle týdenního rytmu" s vynechanými dny a svátky CZ/SK, hromadná úprava názvů) - závazný popis je v 4.2, 5, 6.6, 7.4, 8 a 9.
+
+## 13. Fáze 2: časová pravítka (13. 11. 2026)
+
+Implementováno 13. 11. 2026 - závazný popis je v 5 (sekce A a C), 7.1 a 7.7.
+
+- Pure funkce (týden po–ne, bloky kurzů, počty lekcí po dnech, značky měsíců) jsou v `mapping.js` a pokrývají je testy v `mapping.test.html`.
+- Vykreslení obstarává `ruler.js` (namespace `CourseDuplicator.Ruler`) - generické pravítko bez state a fetch; co se kreslí, skládá `duplicator.js`.
+- Pravítko v sekci C je jen pro čtení. Případné rozšíření (klik na svátek ho přidá do vynechaných dnů) je otevřené.

@@ -1,6 +1,6 @@
 # CourseDuplicator
 
-Webová aplikace pro hromadnou duplikaci kurzů merchantů Reservanto z jednoho období do druhého. Single-tenant nasazení; merchanti se přihlašují přes Reservanto OAuth-like flow. Všechny sekce specifikace (A-G) jsou implementované včetně rozšíření ze spec kapitoly 12 (seskupení kurzů, přesahující kurzy, strategie „Nový rozvrh podle týdenního rytmu", vynechané dny a svátky CZ/SK, hromadná úprava názvů). Mimo rozsah zůstávají kurzy s více lekcemi týdně a časová pravítka (spec 11, bod 4).
+Webová aplikace pro hromadnou duplikaci kurzů merchantů Reservanto z jednoho období do druhého. Single-tenant nasazení; merchanti se přihlašují přes Reservanto OAuth-like flow. Všechny sekce specifikace (A-G) jsou implementované včetně rozšíření ze spec kapitoly 12 (seskupení kurzů, přesahující kurzy, strategie „Nový rozvrh podle týdenního rytmu", vynechané dny a svátky CZ/SK, hromadná úprava názvů) a fáze 2 ze spec kapitoly 13 (časová pravítka v sekcích A a C). Mimo rozsah zůstávají kurzy s více lekcemi týdně.
 
 ## Architektura
 
@@ -14,12 +14,13 @@ Webová aplikace pro hromadnou duplikaci kurzů merchantů Reservanto z jednoho 
 ## Klíčové soubory
 
 - `SPECIFICATION.md` - kompletní funkční specifikace, **vždy konzultuj při změnách a drž aktuální**
-- `Pages/Index.cshtml` (+ `.cs`) - hlavní stránka; handlery `Segments`, `LoadCourses`, `CheckPeriod`, `CreateCourses`
+- `Pages/Index.cshtml` (+ `.cs`) - hlavní stránka; handlery `Segments`, `CourseBlocks`, `LoadCourses`, `CheckPeriod`, `CreateCourses`
 - `Pages/Auth/` - Login / Callback / Logout (Reservanto autorizační flow)
 - `Services/ReservantoClient.cs` - HttpClient wrapper kolem Reservanto API
 - `Services/AuthService.cs` - LTT/STT v session, STT cache (TTL 25 min), CSRF flag callbacku
 - `Filters/RequireAuthAttribute.cs` - globální page filtr, výjimky `/Auth/*` a `/Error`
-- `wwwroot/js/mapping.js` - pure funkce mapování datumů (namespace `CourseDuplicator.Mapping`), detekce rytmu, generování lekcí, svátky CZ/SK + tabulka výjimek po letech (spec 6.6), seskupení kurzů a hromadná úprava názvů
+- `wwwroot/js/mapping.js` - pure funkce mapování datumů (namespace `CourseDuplicator.Mapping`), detekce rytmu, generování lekcí, svátky CZ/SK + tabulka výjimek po letech (spec 6.6), seskupení kurzů a hromadná úprava názvů, bloky kurzů a pomocné funkce časových pravítek
+- `wwwroot/js/ruler.js` - generický render časového pravítka (namespace `CourseDuplicator.Ruler`, jen DOM, bez state), používá ho sekce A a C
 - `wwwroot/js/mapping.test.html` - standalone testy mapování, otevřít v prohlížeči, vše musí být zelené
 - `wwwroot/js/duplicator.js` - frontend: state (spec 4.2), API volání, render sekcí A-G
 
