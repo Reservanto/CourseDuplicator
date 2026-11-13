@@ -165,6 +165,218 @@
             test("applyMapping: bez newFrom je no-op (vrací state)", M.applyMappingToState(untouched), untouched);
         }
 
+        // ==== Rozšíření: nový rozvrh podle týdenního rytmu (spec 6.6) ====
+
+        // Lekce 60 min, start v daný den a čas (lokální čas = Europe/Prague).
+        const lec = (y, m, d, hh = 18, mm = 0, minutes = 60) =>
+            lection(new Date(y, m - 1, d, hh, mm), new Date(y, m - 1, d, hh, mm + minutes));
+        const rhythmStr = (r) => r === null ? 'null' : `${r.weekday}|${r.time}|${r.lengthMinutes}`;
+
+        // ---- detectRhythm (6.6.1) ----
+
+        // Po 31. 8., 7. 9., (14. 9. vynecháno), 21. 9. 2026 v 18:00 - mezera kvůli svátku nevadí.
+        test("rytmus: pravidelný kurz s mezerou (násobek 7 dní) je rytmický",
+            rhythmStr(M.detectRhythm([lec(2026, 8, 31), lec(2026, 9, 7), lec(2026, 9, 21)])), '1|18:00|60');
+
+        test("rytmus: pořadí lekcí na vstupu nehraje roli",
+            rhythmStr(M.detectRhythm([lec(2026, 9, 21), lec(2026, 8, 31), lec(2026, 9, 7)])), '1|18:00|60');
+
+        test("rytmus: kurz s jednou lekcí je rytmický",
+            rhythmStr(M.detectRhythm([lec(2026, 9, 1, 8, 30, 45)])), '2|08:30|45');
+
+        test("rytmus: kurz s 0 lekcemi nemá z čeho rytmus odvodit (null)",
+            rhythmStr(M.detectRhythm([])), 'null');
+
+        test("rytmus: nepravidelný rozestup (10 dní) je nerytmický",
+            rhythmStr(M.detectRhythm([lec(2026, 8, 31), lec(2026, 9, 10)])), 'null');
+
+        test("rytmus: dvě lekce týdně (po + st) jsou nerytmické",
+            rhythmStr(M.detectRhythm([lec(2026, 8, 31), lec(2026, 9, 2), lec(2026, 9, 7), lec(2026, 9, 9)])), 'null');
+
+        test("rytmus: jiný čas začátku jedné lekce je nerytmický",
+            rhythmStr(M.detectRhythm([lec(2026, 8, 31), lec(2026, 9, 7, 18, 30), lec(2026, 9, 14)])), 'null');
+
+        test("rytmus: jiná délka jedné lekce je nerytmická",
+            rhythmStr(M.detectRhythm([lec(2026, 8, 31), lec(2026, 9, 7, 18, 0, 90)])), 'null');
+
+        test("rytmus: dvě lekce ve stejný den jsou nerytmické",
+            rhythmStr(M.detectRhythm([lec(2026, 8, 31), lec(2026, 8, 31)])), 'null');
+
+        // Čas začátku se porovnává v lokálním čase - přes přechod na zimní čas (25. 10. 2026) zůstává 18:00.
+        test("rytmus: řada přes přechod na zimní čas zůstává rytmická",
+            rhythmStr(M.detectRhythm([lec(2026, 10, 19), lec(2026, 10, 26), lec(2026, 11, 2)])), '1|18:00|60');
+
+        // ---- generateRhythmLections (6.6.2) ----
+
+        const tueRhythm = { weekday: 2, time: '08:30', lengthMinutes: 45 };
+        const gen = (rhythm, params) => M.generateRhythmLections(rhythm, {
+            rhythmEndMode: 'endDate', newTo: null, lectionCount: null, excludedDays: [], ...params,
+        });
+        const fmtList = (dates) => dates.map(fmt).join(', ');
+
+        // Blok začíná v pondělí 30. 8. 2027 -> první úterý je 31. 8. 2027.
+        {
+            const starts = gen(tueRhythm, { newFrom: new Date(2027, 7, 30), newTo: new Date(2027, 8, 21) });
+            test("generování endDate: první lekce na první úterý od začátku bloku",
+                starts[0], new Date(2027, 7, 31, 8, 30));
+            test("generování endDate: konec bloku včetně (úterý 21. 9. je poslední)",
+                fmtList(starts), fmtList([new Date(2027, 7, 31, 8, 30), new Date(2027, 8, 7, 8, 30),
+                    new Date(2027, 8, 14, 8, 30), new Date(2027, 8, 21, 8, 30)]));
+        }
+
+        test("generování: začátek bloku ve stejný den v týdnu = první lekce ten den",
+            gen(tueRhythm, { newFrom: new Date(2027, 7, 31), newTo: new Date(2027, 7, 31) })[0],
+            new Date(2027, 7, 31, 8, 30));
+
+        test("generování: konec bloku dřív než první den v týdnu kurzu -> 0 lekcí",
+            gen(tueRhythm, { newFrom: new Date(2027, 7, 26), newTo: new Date(2027, 7, 30) }).length, 0);
+
+        test("generování: celé období vynechané -> 0 lekcí",
+            gen(tueRhythm, { newFrom: new Date(2027, 7, 30), newTo: new Date(2027, 8, 30),
+                excludedDays: [{ from: new Date(2027, 7, 1), to: new Date(2027, 9, 1), label: null }] }).length, 0);
+
+        // Přes přechod na zimní čas (31. 10. 2027) i letní čas (28. 3. 2027) zůstává hodina lekce.
+        {
+            const autumn = gen(tueRhythm, { newFrom: new Date(2027, 9, 19), newTo: new Date(2027, 10, 9) });
+            test("generování přes přechod na zimní čas zachová 8:30",
+                autumn.map((d) => `${d.getHours()}:${d.getMinutes()}`).join(' '), '8:30 8:30 8:30 8:30');
+            test("generování přes přechod na zimní čas: UTC posun se změní (jde o lokální čas)",
+                autumn[0].getTimezoneOffset() !== autumn[3].getTimezoneOffset(), true);
+
+            const spring = gen({ weekday: 1, time: '18:00', lengthMinutes: 60 },
+                { newFrom: new Date(2027, 2, 22), rhythmEndMode: 'count', lectionCount: 3 });
+            test("generování přes přechod na letní čas zachová 18:00",
+                fmtList(spring), fmtList([new Date(2027, 2, 22, 18, 0), new Date(2027, 2, 29, 18, 0), new Date(2027, 3, 5, 18, 0)]));
+        }
+
+        // Vynechaný den: count kurz prodlouží, endDate sníží počet lekcí.
+        {
+            const excludedDays = [{ from: new Date(2027, 8, 14), to: new Date(2027, 8, 14), label: null }];
+            const byCount = gen(tueRhythm, { newFrom: new Date(2027, 7, 30), rhythmEndMode: 'count', lectionCount: 4, excludedDays });
+            test("generování count: vynechaný den se do počtu nepočítá (pořád 4 lekce)", byCount.length, 4);
+            test("generování count: vynechaný den kurz prodlouží (konec 28. 9. místo 21. 9.)",
+                byCount[3], new Date(2027, 8, 28, 8, 30));
+            test("generování count: vynechané úterý 14. 9. mezi lekcemi chybí",
+                byCount.some((d) => M.isSameDay(d, new Date(2027, 8, 14))), false);
+
+            const byEnd = gen(tueRhythm, { newFrom: new Date(2027, 7, 30), newTo: new Date(2027, 8, 21), excludedDays });
+            test("generování endDate: vynechaný den sníží počet lekcí (3 místo 4)", byEnd.length, 3);
+            test("generování endDate: konec zůstává 21. 9.", byEnd[2], new Date(2027, 8, 21, 8, 30));
+        }
+
+        test("generování: vynechaný interval od-do včetně (25.-29. 10.)",
+            gen({ weekday: 4, time: '17:00', lengthMinutes: 60 }, {
+                newFrom: new Date(2027, 9, 18), newTo: new Date(2027, 10, 7),
+                excludedDays: [{ from: new Date(2027, 9, 25), to: new Date(2027, 9, 29), label: null }],
+            }).map(fmt).join(', '),
+            [new Date(2027, 9, 21, 17, 0), new Date(2027, 10, 4, 17, 0)].map(fmt).join(', '));
+
+        test("generování count: pojistka 104 týdnů, když je vše vynechané",
+            gen(tueRhythm, { newFrom: new Date(2027, 0, 1), rhythmEndMode: 'count', lectionCount: 10,
+                excludedDays: [{ from: new Date(2027, 0, 1), to: new Date(2030, 0, 1), label: null }] }).length, 0);
+
+        test("generování: neúplné parametry (endDate bez konce) -> []",
+            gen(tueRhythm, { newFrom: new Date(2027, 7, 30) }).length, 0);
+        test("generování: konec bloku před začátkem -> []",
+            gen(tueRhythm, { newFrom: new Date(2027, 7, 30), newTo: new Date(2027, 7, 29) }).length, 0);
+        test("generování: počet lekcí mimo 1-52 -> []",
+            gen(tueRhythm, { newFrom: new Date(2027, 7, 30), rhythmEndMode: 'count', lectionCount: 53 }).length, 0);
+        test("generování: nerytmický kurz (rhythm null) -> []",
+            gen(null, { newFrom: new Date(2027, 7, 30), newTo: new Date(2027, 8, 30) }).length, 0);
+
+        // ---- regenerateRhythmLections + applyMappingToState ve strategii rhythm ----
+        {
+            const state = {
+                sourceFrom: new Date(2026, 7, 31),
+                newFrom: new Date(2027, 7, 30),
+                shiftStrategy: 'rhythm',
+                rhythmEndMode: 'endDate',
+                newTo: new Date(2027, 8, 21),
+                lectionCount: null,
+                excludedDays: [],
+                registrationEndStrategy: 'keepOffset',
+                registrationEndDaysBefore: 0,
+                courses: [{
+                    isExcluded: false,
+                    originalStartDate: new Date(2026, 8, 1, 8, 30),
+                    originalRegistrationEnd: new Date(2026, 7, 31, 8, 30), // offset 1 den
+                    rhythm: tueRhythm,
+                    lections: [lec(2026, 9, 1, 8, 30, 45)],
+                    rhythmLections: [{ newStart: new Date(1999, 0, 1), isExcluded: true, isPinned: true, pinnedNewStart: new Date(1999, 0, 1) }],
+                }],
+            };
+            test("countRhythmEdits: spočítá upravené / vyloučené lekce", M.countRhythmEdits(state.courses), 1);
+            M.regenerateRhythmLections(state);
+            const course = state.courses[0];
+            test("regenerate: zahodí ruční úpravy a vygeneruje 4 lekce", course.rhythmLections.length, 4);
+            test("regenerate: po přegenerování nejsou žádné úpravy", M.countRhythmEdits(state.courses), 0);
+
+            course.rhythmLections[0].isExcluded = true;
+            M.applyMappingToState(state);
+            test("rhythm applyMapping: newRegistrationEnd z první nevyloučené vygenerované lekce",
+                course.newRegistrationEnd, new Date(2027, 8, 6, 8, 30));
+            test("rhythm periodEnd: konec poslední lekce (start + délka z rytmu)",
+                M.calculatePeriodEndDate(state.courses, 'rhythm'), new Date(2027, 8, 21, 9, 15));
+            test("rhythm periodStart: první nevyloučená lekce",
+                M.calculatePeriodStartDate(state.courses, 'rhythm'), new Date(2027, 8, 7, 8, 30));
+        }
+
+        // ---- Velikonoce a svátky (6.6.4) ----
+
+        test("Velikonoční neděle 2025 = 20. 4.", M.easterSunday(2025), new Date(2025, 3, 20));
+        test("Velikonoční neděle 2026 = 5. 4.", M.easterSunday(2026), new Date(2026, 3, 5));
+        test("Velikonoční neděle 2027 = 28. 3.", M.easterSunday(2027), new Date(2027, 2, 28));
+        test("Velikonoční neděle 2024 = 31. 3.", M.easterSunday(2024), new Date(2024, 2, 31));
+
+        const hasHoliday = (country, y, m, d) =>
+            M.holidaysForYear(country, y).some((h) => M.isSameDay(h.date, new Date(y, m - 1, d)));
+
+        test("CZ 2026: 13 svátků", M.holidaysForYear('CZ', 2026).length, 13);
+        test("CZ 2026: Velký pátek 3. 4.", hasHoliday('CZ', 2026, 4, 3), true);
+        test("CZ 2026: Velikonoční pondělí 6. 4.", hasHoliday('CZ', 2026, 4, 6), true);
+        test("CZ 2027: Velký pátek 26. 3. má název",
+            M.holidaysForYear('CZ', 2027).find((h) => M.isSameDay(h.date, new Date(2027, 2, 26)))?.label, 'Velký pátek');
+        test("CZ: 6. 1. není svátek", hasHoliday('CZ', 2027, 1, 6), false);
+
+        test("SK 2026 bez 8. 5.", hasHoliday('SK', 2026, 5, 8), false);
+        test("SK 2026 bez 15. 9.", hasHoliday('SK', 2026, 9, 15), false);
+        test("SK 2026: 11 svátků", M.holidaysForYear('SK', 2026).length, 11);
+        test("SK 2027 s 8. 5.", hasHoliday('SK', 2027, 5, 8), true);
+        test("SK 2027 s 15. 9.", hasHoliday('SK', 2027, 9, 15), true);
+        test("SK 2027: 13 svátků", M.holidaysForYear('SK', 2027).length, 13);
+        test("SK: 28. 10. není svátek", hasHoliday('SK', 2027, 10, 28), false);
+
+        test("svátky v intervalu: CZ 30. 8. - 7. 11. 2027 = 28. 9. a 28. 10.",
+            M.holidaysInRange('CZ', new Date(2027, 7, 30), new Date(2027, 10, 7)).map((h) => fmt(h.date)).join(', '),
+            [new Date(2027, 8, 28), new Date(2027, 9, 28)].map(fmt).join(', '));
+        test("svátky v intervalu: hranice včetně (28. 9. - 28. 9.)",
+            M.holidaysInRange('CZ', new Date(2027, 8, 28), new Date(2027, 8, 28)).length, 1);
+        test("svátky v intervalu přes přelom roku (CZ 20. 12. 2026 - 10. 1. 2027 = 4)",
+            M.holidaysInRange('CZ', new Date(2026, 11, 20), new Date(2027, 0, 10)).length, 4);
+        test("svátky v intervalu: SK 2026-2027 respektuje výjimky po letech",
+            M.holidaysInRange('SK', new Date(2026, 4, 1), new Date(2027, 8, 30))
+                .filter((h) => h.date.getMonth() === 4 && h.date.getDate() === 8).map((h) => h.date.getFullYear()).join(','),
+            '2027');
+
+        // ---- Seskupení a hromadná úprava názvů (5B, 5E) ----
+        {
+            const c = (name, lections) => ({ name, lections });
+            const a1 = c('Jóga', [lec(2026, 9, 1, 8, 30), lec(2026, 9, 8, 8, 30)]);
+            const a2 = c('Jóga', [lec(2026, 9, 1, 9, 30), lec(2026, 9, 8, 9, 30)]);   // jiný čas -> stejná skupina
+            const b1 = c('Jóga', [lec(2026, 9, 1, 8, 30), lec(2026, 9, 15, 8, 30)]);  // jiná data -> jiná skupina
+            const b2 = c('Pilates', [lec(2026, 9, 1, 8, 30), lec(2026, 9, 8, 8, 30)]); // jiný název
+            const groups = M.groupCourses([a1, b1, a2, b2]);
+            test("seskupení: stejný název + stejná data (jiný čas) = jedna skupina", groups[0].courses.length, 2);
+            test("seskupení: počet skupin", groups.length, 3);
+            test("seskupení: pořadí podle prvního výskytu", groups.map((g) => g.courses[0].name).join(','), 'Jóga,Jóga,Pilates');
+        }
+
+        test("názvy: nahradí všechny výskyty", M.replaceInName('AB/26 Jóga AB/26', 'AB/26', 'AB/27'), 'AB/27 Jóga AB/27');
+        test("názvy: rozlišuje velikost písmen", M.replaceInName('Jóga ab/26', 'AB/26', 'AB/27'), 'Jóga ab/26');
+        test("názvy: žádné regexy (tečka je tečka)", M.replaceInName('Jóga 1.2', '.', '-'), 'Jóga 1-2');
+        test("názvy: prázdné Najít = beze změny", M.replaceInName('Jóga', '', 'X'), 'Jóga');
+        test("názvy: nahrazení prázdným textem", M.replaceInName('Jóga 2026', ' 2026', ''), 'Jóga');
+
         // ---- souhrn ----
         const summary = document.getElementById('summary');
         summary.textContent = failed === 0

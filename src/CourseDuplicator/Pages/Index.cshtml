@@ -42,6 +42,15 @@
 <section class="rds-card" id="section-overview" hidden>
     <div class="rds-card__head"><h2 class="rds-h2">Načtené kurzy</h2></div>
     <div id="course-list"></div>
+    <!-- Kurzy, které zdrojové období jen protínají (spec 5B, 7.4) - ve výchozím stavu se nekopírují -->
+    <details class="duplicator__overlap" id="overlap-block" hidden>
+        <summary class="duplicator__overlap-title" id="overlap-title"></summary>
+        <p class="rds-help duplicator__overlap-help">
+            Začínají před datem OD nebo končí po datu DO. Ve výchozím stavu se nekopírují.
+            Zahrnutý kurz se zkopíruje celý, se všemi lekcemi.
+        </p>
+        <div id="overlap-list"></div>
+    </details>
     <p class="rds-muted duplicator__summary" id="course-summary"></p>
 </section>
 
@@ -50,12 +59,16 @@
     <div class="rds-card__head"><h2 class="rds-h2">Cílové období</h2></div>
     <div class="rds-card__body rds-stack-6">
         <div class="rds-field duplicator__field">
-            <label class="rds-label" for="new-from">Nové datum OD</label>
+            <label class="rds-label" for="new-from" id="new-from-label">Nové datum OD</label>
             <input class="rds-input" type="date" id="new-from" />
-            <span class="rds-help">
+            <span class="rds-help" id="new-from-help-shift">
                 Posouvá se začátek <strong>zdrojového období</strong> (datum OD ze sekce A), ne první lekce.
                 Lekce si zachovají svůj odstup od začátku období. Pokud chcete, aby první lekce začala přesně
                 tímto dnem, zadejte v sekci A jako datum OD den první lekce.
+            </span>
+            <span class="rds-help" id="new-from-help-rhythm" hidden>
+                Datum se nezaokrouhluje: první lekce každého kurzu padne na první jeho den v týdnu
+                od tohoto data (včetně).
             </span>
         </div>
         <p class="rds-error" id="target-error" hidden></p>
@@ -72,11 +85,75 @@
                 Přesný posun
                 <span class="rds-help">(dny v týdnu se posunou)</span>
             </label>
+            <label class="rds-check" id="rhythm-option">
+                <input type="radio" name="shift-strategy" value="rhythm" id="rhythm-radio" />
+                Nový rozvrh podle týdenního rytmu
+                <span class="rds-help">(lekce se vygenerují znovu podle dne v týdnu a času každého kurzu)</span>
+            </label>
         </fieldset>
+        <div class="duplicator__warning" id="rhythm-unavailable" hidden>
+            <span id="rhythm-unavailable-text"></span>
+            <button class="rds-btn rds-btn--ghost rds-btn--sm duplicator__inline-btn" type="button" id="exclude-nonrhythmic-btn">
+                Vyloučit tyto kurzy
+            </button>
+        </div>
+        <p class="duplicator__warning" id="strategy-notice" hidden></p>
+
+        <!-- Parametry strategie „Nový rozvrh podle týdenního rytmu" (spec 5C, 6.6) -->
+        <div class="duplicator__rhythm rds-stack-6" id="rhythm-params" hidden>
+            <fieldset class="duplicator__radios duplicator__radios--inline">
+                <legend class="rds-label">Konec bloku</legend>
+                <label class="rds-check">
+                    <input type="radio" name="rhythm-end-mode" value="endDate" checked />
+                    Datum konce
+                </label>
+                <label class="rds-check">
+                    <input type="radio" name="rhythm-end-mode" value="count" />
+                    Počet lekcí
+                </label>
+            </fieldset>
+            <div class="rds-field duplicator__field" id="new-to-field">
+                <label class="rds-label" for="new-to">Konec nového bloku</label>
+                <input class="rds-input" type="date" id="new-to" />
+                <span class="rds-help">Včetně tohoto dne.</span>
+            </div>
+            <div class="rds-field duplicator__field" id="lection-count-field" hidden>
+                <label class="rds-label" for="lection-count">Počet lekcí</label>
+                <input class="rds-input" type="number" id="lection-count" min="1" max="52" step="1" />
+                <span class="rds-help">1–52. Vynechané dny se do počtu nepočítají – kurz se o ně prodlouží.</span>
+            </div>
+            <p class="rds-error" id="rhythm-error" hidden></p>
+
+            <div class="rds-field">
+                <span class="rds-label">Vynechané dny</span>
+                <div class="duplicator__date-range duplicator__date-range--compact">
+                    <div class="rds-field">
+                        <label class="rds-help" for="excluded-from">OD</label>
+                        <input class="rds-input" type="date" id="excluded-from" />
+                    </div>
+                    <div class="rds-field">
+                        <label class="rds-help" for="excluded-to">DO (nepovinné)</label>
+                        <input class="rds-input" type="date" id="excluded-to" />
+                    </div>
+                    <button class="rds-btn rds-btn--secondary duplicator__align-end" type="button" id="excluded-add-btn">Přidat</button>
+                </div>
+                <p class="rds-error" id="excluded-error" hidden></p>
+                <ul class="duplicator__chips" id="excluded-list"></ul>
+                <div class="rds-row duplicator__holidays">
+                    <button class="rds-btn rds-btn--secondary rds-btn--sm" type="button" id="holidays-add-btn">Přidat státní svátky v období</button>
+                    <label class="rds-check"><input type="radio" name="holiday-country" value="CZ" checked /> CZ</label>
+                    <label class="rds-check"><input type="radio" name="holiday-country" value="SK" /> SK</label>
+                    <span class="rds-help" id="holidays-status"></span>
+                </div>
+                <span class="rds-help">
+                    Svátky se nikdy nepřidávají samy. Školní prázdniny a jiné dny zadejte ručně.
+                </span>
+            </div>
+        </div>
 
         <dl class="duplicator__computed">
             <div class="duplicator__computed-item">
-                <dt class="duplicator__computed-label">Efektivní datum OD</dt>
+                <dt class="duplicator__computed-label" id="effective-from-label">Efektivní datum OD</dt>
                 <dd class="duplicator__computed-value" id="effective-from">–</dd>
             </div>
             <div class="duplicator__computed-item">
@@ -92,6 +169,7 @@
 <!-- Sekce D: Detail kurzů s novými datumy -->
 <section class="rds-card" id="section-detail" hidden>
     <div class="rds-card__head"><h2 class="rds-h2">Kurzy s novými datumy</h2></div>
+    <p class="duplicator__warning duplicator__card-notice" id="lection-count-warning" hidden></p>
     <div id="course-detail-list"></div>
 </section>
 
@@ -121,6 +199,26 @@
             <label class="rds-label" for="registration-end-days">Počet dní před začátkem</label>
             <input class="rds-input" type="number" id="registration-end-days" min="0" value="3" />
         </div>
+
+        <!-- Hromadná úprava názvů (spec 5E) -->
+        <div class="rds-field">
+            <span class="rds-label">Hromadná úprava názvů</span>
+            <div class="duplicator__date-range">
+                <div class="rds-field">
+                    <label class="rds-help" for="name-find">Najít v názvu</label>
+                    <input class="rds-input" type="text" id="name-find" autocomplete="off" />
+                </div>
+                <div class="rds-field">
+                    <label class="rds-help" for="name-replace">Nahradit za</label>
+                    <input class="rds-input" type="text" id="name-replace" autocomplete="off" />
+                </div>
+            </div>
+            <span class="rds-help">
+                Nahradí všechny výskyty textu v názvech nových kurzů (prostý text, rozlišuje velká a malá písmena).
+                Prázdné „Najít" = názvy beze změny.
+            </span>
+            <span class="rds-help" id="name-summary" hidden></span>
+        </div>
     </div>
 </section>
 
@@ -130,6 +228,7 @@
     <div class="rds-card__body rds-stack-6">
         <p class="duplicator__create-summary" id="create-summary">Bude vytvořeno 0 kurzů s celkem 0 lekcemi.</p>
         <p class="duplicator__warning" id="create-warning" hidden></p>
+        <p class="duplicator__blocker" id="create-blocker" hidden></p>
         <div class="rds-row">
             <button class="rds-btn rds-btn--primary" type="button" id="create-courses-btn" disabled>Vytvořit kurzy</button>
             <span class="spinner" id="create-spinner" hidden></span>
@@ -148,6 +247,18 @@
         <button class="rds-btn rds-btn--secondary" type="button" id="reset-btn">Vytvořit další</button>
     </div>
 </section>
+
+<!-- Potvrzení změny, která zahodí ruční úpravy lekcí (spec 5C, 6.3) -->
+<div class="rds-overlay" id="confirm-overlay" hidden>
+    <div class="rds-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+        <div class="rds-modal__head"><h3 id="confirm-title">Zrušit ruční úpravy?</h3></div>
+        <div class="rds-modal__body"><p class="duplicator__modal-text" id="confirm-text"></p></div>
+        <div class="rds-modal__foot">
+            <button class="rds-btn rds-btn--secondary" type="button" id="confirm-cancel">Zpět</button>
+            <button class="rds-btn rds-btn--primary" type="button" id="confirm-ok">Pokračovat</button>
+        </div>
+    </div>
+</div>
 
 @section Scripts {
     <script src="~/js/mapping.js" asp-append-version="true"></script>

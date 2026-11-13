@@ -274,6 +274,201 @@ html, body {
     padding: 0 var(--rds-space-4);
 }
 
+/* Nezahrnutý přesahující kurz (výchozí stav, sekce B) - jen ztlumený */
+.rds-table tr.is-muted td {
+    color: var(--color-ink-3);
+}
+
+/* Skupina stejných kurzů (sekce B/D) a její rozbalené kurzy */
+.rds-table tr.is-group td {
+    background: var(--color-surface-2);
+}
+
+.rds-table tr.is-child td:first-child {
+    padding-left: var(--rds-space-16);
+}
+
+.duplicator__group-count {
+    color: var(--color-ink-3);
+    font-weight: var(--rds-weight-regular);
+}
+
+.duplicator__badge {
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+/* Druhý řádek buňky (počet lekcí u strategie „Nový rozvrh") */
+.duplicator__subline {
+    display: block;
+    font-size: var(--rds-text-sm);
+    color: var(--color-ink-3);
+}
+
+/* Hodnota odlišná od nejčastější (rozdílný počet lekcí, sekce D) */
+.duplicator__highlight {
+    color: var(--color-warning);
+    font-weight: var(--rds-weight-medium);
+}
+
+/* Hranice, kterou přesahující kurz přesahuje zdrojové období (sekce B) */
+.duplicator__boundary {
+    color: var(--color-warning);
+    font-weight: var(--rds-weight-medium);
+}
+
+/* Lekce, která by padla do minulosti (edge case 8) */
+.rds-table tr.is-invalid td {
+    color: var(--color-danger);
+}
+
+.lections-toolbar {
+    margin-bottom: var(--rds-space-4);
+}
+
+.lections-caption {
+    margin: var(--rds-space-8) 0 var(--rds-space-3);
+}
+
+/* ---------- Přesahující kurzy (sekce B) ---------- */
+
+.duplicator__overlap {
+    border-top: 1px solid var(--color-border);
+}
+
+.duplicator__overlap-title {
+    padding: var(--rds-space-6) var(--card-padding);
+    font-weight: var(--rds-weight-medium);
+    color: var(--color-ink-2);
+    cursor: pointer;
+}
+
+.duplicator__overlap-title:hover {
+    color: var(--color-ink);
+}
+
+.duplicator__overlap-help {
+    display: block;
+    margin: 0;
+    padding: 0 var(--card-padding) var(--rds-space-5);
+}
+
+/* ---------- Strategie „Nový rozvrh" (sekce C) ---------- */
+
+.duplicator__radios--inline {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--rds-space-8);
+}
+
+.duplicator__radios--inline legend {
+    width: 100%;
+}
+
+.rds-check.is-disabled {
+    color: var(--color-ink-3);
+    cursor: not-allowed;
+}
+
+.rds-check.is-disabled input {
+    cursor: not-allowed;
+}
+
+.duplicator__rhythm {
+    padding: var(--rds-space-8);
+    border: 1px solid var(--color-border);
+    border-radius: var(--control-radius);
+    background: var(--color-surface-2);
+}
+
+.duplicator__date-range--compact {
+    gap: var(--rds-space-6);
+    align-items: flex-end;
+}
+
+.duplicator__date-range--compact .rds-field {
+    width: 170px;
+}
+
+.duplicator__align-end {
+    align-self: flex-end;
+}
+
+.duplicator__inline-btn {
+    margin-left: var(--rds-space-3);
+}
+
+.duplicator__holidays {
+    flex-wrap: wrap;
+}
+
+/* Vynechané dny jako chipy (staví na rds-badge) */
+.duplicator__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--rds-space-3);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.duplicator__chips:empty {
+    display: none;
+}
+
+.duplicator__chip {
+    height: auto;
+    min-height: 24px;
+    padding-right: var(--rds-space-2);
+    font-size: var(--rds-text-sm);
+    font-weight: var(--rds-weight-regular);
+}
+
+.duplicator__chip-label {
+    color: var(--color-ink-3);
+}
+
+.duplicator__chip-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    border-radius: var(--rds-radius-pill);
+    background: transparent;
+    color: var(--color-ink-3);
+    font: inherit;
+    font-size: var(--rds-text-xs);
+    cursor: pointer;
+}
+
+.duplicator__chip-remove:hover {
+    background: var(--color-surface);
+    color: var(--color-danger);
+}
+
+/* ---------- Sekce D / F: hlášky ---------- */
+
+/* Hláška nad tabulkou uvnitř karty (tabulka je flush) */
+.duplicator__card-notice {
+    margin: 0 var(--card-padding) var(--rds-space-6);
+}
+
+.duplicator__blocker {
+    margin: 0;
+    padding: var(--rds-space-5) var(--rds-space-6);
+    border-radius: var(--control-radius);
+    background: var(--color-danger-soft);
+    color: var(--color-danger);
+    font-size: var(--rds-text-sm);
+}
+
+.duplicator__modal-text {
+    margin: 0;
+}
+
 /* ---------- Výsledek (sekce G) ---------- */
 
 .result-list {

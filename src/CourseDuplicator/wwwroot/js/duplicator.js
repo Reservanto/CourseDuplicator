@@ -1,5 +1,5 @@
 // Frontend duplikátoru - sekce A (zdrojové období), B (přehled), C (cílové období),
-// D (detail s novými datumy) a E (globální nastavení).
+// D (detail s novými datumy), E (globální nastavení), F (vytvoření) a G (výsledek).
 // Mapovací logika je v mapping.js, tady jen state, API volání a render.
 (() => {
     'use strict';
@@ -15,15 +15,33 @@
         newFrom: null,
         shiftStrategy: 'weekday',
 
+        // Jen pro shiftStrategy = 'rhythm' (spec 6.6)
+        rhythmEndMode: 'endDate',
+        newTo: null,
+        lectionCount: null,
+        excludedDays: [],
+        holidayCountry: 'CZ',
+
         singleLectionBookingEnabled: false,
         singleLectionBookingFrom: null,
         registrationEndStrategy: 'keepOffset',
         registrationEndDaysBefore: 3,
+        nameFind: '',
+        nameReplace: '',
 
         courses: [],
     };
     // Pro ladění v konzoli
     window.CourseDuplicator.state = state;
+
+    // Čistě UI stav (není součástí spec state): rozbalené skupiny a bloky.
+    const ui = {
+        openGroups: new Set(),
+        overlapOpen: false,
+    };
+
+    // Strategie „Nový rozvrh" z cookie čeká, až se načtou kurzy (použije se, jen když jsou rytmické - spec 9).
+    let pendingPrefStrategy = null;
 
     // ---- Elementy ----
     const el = (id) => document.getElementById(id);
@@ -38,14 +56,41 @@
     const loadError = el('load-error');
     const sectionOverview = el('section-overview');
     const courseList = el('course-list');
+    const overlapBlock = el('overlap-block');
+    const overlapTitle = el('overlap-title');
+    const overlapList = el('overlap-list');
     const courseSummary = el('course-summary');
     const sectionTarget = el('section-target');
+    const newFromLabel = el('new-from-label');
     const newFromInput = el('new-from');
+    const newFromHelpShift = el('new-from-help-shift');
+    const newFromHelpRhythm = el('new-from-help-rhythm');
     const targetError = el('target-error');
+    const rhythmOption = el('rhythm-option');
+    const rhythmRadio = el('rhythm-radio');
+    const rhythmUnavailable = el('rhythm-unavailable');
+    const rhythmUnavailableText = el('rhythm-unavailable-text');
+    const excludeNonRhythmicButton = el('exclude-nonrhythmic-btn');
+    const strategyNotice = el('strategy-notice');
+    const rhythmParams = el('rhythm-params');
+    const newToField = el('new-to-field');
+    const newToInput = el('new-to');
+    const lectionCountField = el('lection-count-field');
+    const lectionCountInput = el('lection-count');
+    const rhythmError = el('rhythm-error');
+    const excludedFromInput = el('excluded-from');
+    const excludedToInput = el('excluded-to');
+    const excludedAddButton = el('excluded-add-btn');
+    const excludedError = el('excluded-error');
+    const excludedList = el('excluded-list');
+    const holidaysAddButton = el('holidays-add-btn');
+    const holidaysStatus = el('holidays-status');
+    const effectiveFromLabel = el('effective-from-label');
     const effectiveFromEl = el('effective-from');
     const computedToEl = el('computed-to');
     const periodCheck = el('period-check');
     const sectionDetail = el('section-detail');
+    const lectionCountWarning = el('lection-count-warning');
     const courseDetailList = el('course-detail-list');
     const sectionSettings = el('section-settings');
     const singleLectionEnabled = el('single-lection-enabled');
@@ -54,8 +99,12 @@
     const registrationEndStrategy = el('registration-end-strategy');
     const registrationEndDaysField = el('registration-end-days-field');
     const registrationEndDays = el('registration-end-days');
+    const nameFindInput = el('name-find');
+    const nameReplaceInput = el('name-replace');
+    const nameSummary = el('name-summary');
     const createSummary = el('create-summary');
     const createWarning = el('create-warning');
+    const createBlocker = el('create-blocker');
     const createButton = el('create-courses-btn');
     const createSpinner = el('create-spinner');
     const createStatus = el('create-status');
@@ -64,6 +113,10 @@
     const resultSummary = el('result-summary');
     const resultList = el('result-list');
     const resetButton = el('reset-btn');
+    const confirmOverlay = el('confirm-overlay');
+    const confirmText = el('confirm-text');
+    const confirmOk = el('confirm-ok');
+    const confirmCancel = el('confirm-cancel');
 
     // ---- API helpers ----
     const antiforgeryToken = () =>
@@ -83,32 +136,20 @@
         return body;
     };
 
+    const postJson = (url, body) => fetchJson(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'RequestVerificationToken': antiforgeryToken(),
+        },
+        body: JSON.stringify(body),
+    });
+
     const api = {
         getSegments: () => fetchJson('/?handler=Segments'),
-        loadCourses: (segmentId, from, to) => fetchJson('/?handler=LoadCourses', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'RequestVerificationToken': antiforgeryToken(),
-            },
-            body: JSON.stringify({ segmentId, from, to }),
-        }),
-        checkPeriod: (segmentId, from, to) => fetchJson('/?handler=CheckPeriod', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'RequestVerificationToken': antiforgeryToken(),
-            },
-            body: JSON.stringify({ segmentId, from, to }),
-        }),
-        createCourses: (body) => fetchJson('/?handler=CreateCourses', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'RequestVerificationToken': antiforgeryToken(),
-            },
-            body: JSON.stringify(body),
-        }),
+        loadCourses: (segmentId, from, to) => postJson('/?handler=LoadCourses', { segmentId, from, to }),
+        checkPeriod: (segmentId, from, to) => postJson('/?handler=CheckPeriod', { segmentId, from, to }),
+        createCourses: (body) => postJson('/?handler=CreateCourses', body),
     };
 
     // ---- Formátování (čeština, Europe/Prague je lokální čas prohlížeče) ----
@@ -125,9 +166,34 @@
         `${date.getDate()}. ${date.getMonth() + 1}. ${date.getFullYear()} (${weekdayShort.format(date)}) ` +
         `${date.getHours()}:${pad2(date.getMinutes())}`;
 
+    /** "8:30" */
+    const formatTime = (date) => `${date.getHours()}:${pad2(date.getMinutes())}`;
+
+    /** 'HH:mm' z rytmu -> "8:30" */
+    const formatRhythmTime = (time) => {
+        const [hours, minutes] = time.split(':');
+        return `${Number(hours)}:${minutes}`;
+    };
+
+    /** Krátký název dne v týdnu podle indexu (0 = neděle): "út". 7. 1. 2024 je neděle. */
+    const weekdayShortByIndex = (weekday) => weekdayShort.format(new Date(2024, 0, 7 + weekday));
+
+    /** Vynechané dny: "28. 10. 2027 (čtvrtek)" nebo "25. 10. – 29. 10. 2027" (spec 5C). */
+    const formatDayRange = (from, to) => {
+        if (Mapping.isSameDay(from, to)) return formatDate(from);
+        const sameYear = from.getFullYear() === to.getFullYear();
+        const fromText = `${from.getDate()}. ${from.getMonth() + 1}.${sameYear ? '' : ` ${from.getFullYear()}`}`;
+        return `${fromText} – ${to.getDate()}. ${to.getMonth() + 1}. ${to.getFullYear()}`;
+    };
+
+    /** Hodnota pro input[type=date]: "2026-01-05" ('' pro null). */
+    const toDateInputValue = (date) => date
+        ? `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
+        : '';
+
     /** Hodnota pro input[type=datetime-local]: "2026-01-05T18:00". */
     const toLocalInputValue = (date) =>
-        `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+        `${toDateInputValue(date)}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 
     /** Parsování hodnoty datetime-local jako lokálního času (bez TZ překvapení). */
     const parseLocalInputValue = (value) => {
@@ -137,11 +203,59 @@
         return new Date(year, month - 1, day, hour, minute);
     };
 
+    const parseDateInput = (input, endOfDay) => {
+        if (!input.value) return null;
+        const [year, month, day] = input.value.split('-').map(Number);
+        return endOfDay
+            ? new Date(year, month - 1, day, 23, 59, 59)
+            : new Date(year, month - 1, day);
+    };
+
+    const toUnix = (date) => Math.floor(date.getTime() / 1000);
+
     /** Aktuální nový start lekce s respektováním pinned hodnoty. */
     const lectionNewStart = (lection) =>
         (lection.isPinned ? lection.pinnedNewStart : lection.newStart) ?? null;
 
-    // ---- Uchování naposledy zadaných hodnot (cookie, 30 dnů) ----
+    const lectionLengthMinutes = (lection) =>
+        Math.round((lection.originalEnd - lection.originalStart) / 60000);
+
+    const uniqueSorted = (values) => [...new Set(values)].sort((a, b) => a.localeCompare(b, 'cs'));
+
+    // ---- Odvozené hodnoty ----
+    const isRhythm = () => state.shiftStrategy === 'rhythm';
+
+    /** Aktivní (ne-vyloučené) lekce kurzu pro aktuální strategii: [{ start, lengthMinutes, lection }]. */
+    const activeLections = (course) => Mapping.activeLections(course, state.shiftStrategy);
+
+    /** Název nového kurzu po hromadné úpravě (spec 5E). */
+    const newName = (course) => Mapping.replaceInName(course.name, state.nameFind, state.nameReplace);
+    const isNameInvalid = (course) => newName(course).trim() === '';
+
+    /** Nevyloučené kurzy bez týdenního rytmu - blokují strategii „Nový rozvrh" (spec 5C). */
+    const nonRhythmicIncluded = () => state.courses.filter((c) => !c.isExcluded && !c.rhythm);
+
+    /** Kurzy zobrazené v sekci D: všechny v období + zahrnuté přesahující. */
+    const detailCourses = () => state.courses.filter((c) => !c.isOverlapping || !c.isExcluded);
+
+    /** Jsou zadané všechny vstupy cílového období (sekce D/E se zobrazí)? */
+    const hasTargetInput = () => state.newFrom !== null && state.courses.length > 0
+        && (!isRhythm() || Mapping.rhythmParamsComplete(state));
+
+    /** Interval pro tlačítko svátků: začátek bloku – konec bloku, v režimu „Počet lekcí" + 12 měsíců (spec 5C). */
+    const holidayRange = () => {
+        if (!state.newFrom) return null;
+        if (state.rhythmEndMode === 'count') {
+            const from = state.newFrom;
+            return { from, to: new Date(from.getFullYear() + 1, from.getMonth(), from.getDate()) };
+        }
+        if (!state.newTo || Mapping.daysBetween(state.newFrom, state.newTo) < 0) return null;
+        return { from: state.newFrom, to: state.newTo };
+    };
+
+    const isPast = (date) => date <= new Date();
+
+    // ---- Uchování naposledy zadaných hodnot (cookie, 30 dnů, spec 9) ----
     const PREFS_COOKIE = 'cd_prefs';
     const PREFS_MAX_AGE = 30 * 24 * 3600;
 
@@ -151,7 +265,9 @@
             sourceFrom: sourceFromInput.value || null,
             sourceTo: sourceToInput.value || null,
             newFrom: newFromInput.value || null,
-            shiftStrategy: state.shiftStrategy,
+            shiftStrategy: pendingPrefStrategy ?? state.shiftStrategy,
+            rhythmEndMode: state.rhythmEndMode,
+            holidayCountry: state.holidayCountry,
             singleLectionBookingEnabled: state.singleLectionBookingEnabled,
             singleLectionBookingFrom: singleLectionFrom.value || null,
             registrationEndStrategy: state.registrationEndStrategy,
@@ -169,6 +285,11 @@
         } catch {
             return null;
         }
+    };
+
+    const checkRadio = (name, value) => {
+        const radio = document.querySelector(`input[name="${name}"][value="${value}"]`);
+        if (radio) radio.checked = true;
     };
 
     /** Předvyplní inputy a state z cookie. Segment se aplikuje až po načtení dropdownu. */
@@ -189,10 +310,21 @@
             }
         }
 
-        if (Mapping.SHIFT_STRATEGIES.includes(prefs.shiftStrategy)) {
+        if (prefs.shiftStrategy === 'rhythm') {
+            // Použije se až po načtení kurzů, jen pokud jsou všechny rytmické (spec 9).
+            pendingPrefStrategy = 'rhythm';
+        } else if (Mapping.SHIFT_STRATEGIES.includes(prefs.shiftStrategy)) {
             state.shiftStrategy = prefs.shiftStrategy;
-            const radio = document.querySelector(`input[name="shift-strategy"][value="${prefs.shiftStrategy}"]`);
-            if (radio) radio.checked = true;
+            checkRadio('shift-strategy', prefs.shiftStrategy);
+        }
+
+        if (Mapping.RHYTHM_END_MODES.includes(prefs.rhythmEndMode)) {
+            state.rhythmEndMode = prefs.rhythmEndMode;
+            checkRadio('rhythm-end-mode', prefs.rhythmEndMode);
+        }
+        if (Mapping.HOLIDAY_COUNTRIES.includes(prefs.holidayCountry)) {
+            state.holidayCountry = prefs.holidayCountry;
+            checkRadio('holiday-country', prefs.holidayCountry);
         }
 
         if (typeof prefs.singleLectionBookingEnabled === 'boolean') {
@@ -216,9 +348,6 @@
         }
     };
 
-    const lectionLengthMinutes = (lection) =>
-        Math.round((lection.originalEnd - lection.originalStart) / 60000);
-
     const showError = (message) => {
         loadError.textContent = message;
         loadError.hidden = false;
@@ -230,7 +359,100 @@
         loadStatus.textContent = status;
     };
 
-    // ---- Sekce A: segmenty ----
+    // ---- Potvrzovací dialog (rds-modal) ----
+    let confirmResolve = null;
+
+    const confirmDialog = (text) => new Promise((resolve) => {
+        confirmText.textContent = text;
+        confirmOverlay.hidden = false;
+        confirmResolve = (value) => {
+            confirmOverlay.hidden = true;
+            confirmResolve = null;
+            resolve(value);
+        };
+        confirmOk.focus();
+    });
+
+    confirmOk.addEventListener('click', () => confirmResolve?.(true));
+    confirmCancel.addEventListener('click', () => confirmResolve?.(false));
+    confirmOverlay.addEventListener('click', (event) => {
+        if (event.target === confirmOverlay) confirmResolve?.(false);
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && confirmResolve) confirmResolve(false);
+    });
+
+    /**
+     * Přegenerování rhythmLections zahodí ruční úpravy a vyloučení lekcí (spec 6.3).
+     * Pokud nějaké jsou, zeptá se uživatele; vrací true = pokračovat.
+     */
+    const confirmDiscardRhythmEdits = async (prefix = '') => {
+        const count = Mapping.countRhythmEdits(state.courses);
+        if (count === 0) return true;
+        return confirmDialog(`${prefix}Změna zruší ruční úpravy u ${count} lekcí. Pokračovat?`);
+    };
+
+    /** Nastaví strategii; 'rhythm' lekce vygeneruje, jiná strategie rhythmLections zahodí (spec 6.3). */
+    const setStrategy = (strategy) => {
+        state.shiftStrategy = strategy;
+        checkRadio('shift-strategy', strategy);
+        if (strategy === 'rhythm') {
+            Mapping.regenerateRhythmLections(state);
+        } else {
+            for (const course of state.courses) course.rhythmLections = [];
+        }
+    };
+
+    /**
+     * Změna parametru rytmu (začátek, konec/počet, vynechané dny): po potvrzení aplikuje změnu
+     * a přegeneruje lekce, jinak vrátí input (revert). Mimo strategii „Nový rozvrh" jen aplikuje.
+     */
+    const applyRhythmChange = async (apply, revert) => {
+        if (isRhythm() && !(await confirmDiscardRhythmEdits())) {
+            revert?.();
+            return false;
+        }
+        apply();
+        if (isRhythm()) Mapping.regenerateRhythmLections(state);
+        recalculate();
+        return true;
+    };
+
+    const showStrategyNotice = (text) => {
+        strategyNotice.textContent = text;
+        strategyNotice.hidden = !text;
+    };
+
+    /**
+     * Vyloučení / zahrnutí kurzů (sekce B i D). Pokud tím při strategii „Nový rozvrh" přibude
+     * mezi nevyloučené nerytmický kurz, strategie se přepne na „Zachovat dny v týdnu" (spec 8).
+     */
+    const setCoursesExcluded = async (courses, excluded) => {
+        const previous = courses.map((c) => c.isExcluded);
+        for (const course of courses) course.isExcluded = excluded;
+
+        if (isRhythm()) {
+            const nonRhythmic = nonRhythmicIncluded();
+            if (nonRhythmic.length > 0) {
+                const ok = await confirmDiscardRhythmEdits(
+                    'Zahrnutý kurz nemá pravidelný týdenní rytmus, strategie se přepne na „Zachovat dny v týdnu". ');
+                if (!ok) {
+                    courses.forEach((course, i) => { course.isExcluded = previous[i]; });
+                    renderOverview();
+                    return;
+                }
+                setStrategy('weekday');
+                showStrategyNotice('Strategie byla přepnuta na „Zachovat dny v týdnu", protože tyto kurzy nemají '
+                    + `pravidelný týdenní rytmus: ${uniqueSorted(nonRhythmic.map((c) => c.name)).join(', ')}.`);
+                savePrefs();
+            }
+        }
+
+        renderOverview();
+        recalculate();
+    };
+
+    // ---- Sekce A: zaměření ----
     const loadSegments = async () => {
         try {
             const segments = await api.getSegments();
@@ -249,35 +471,25 @@
             }
             segmentSelect.disabled = false;
 
-            // Předvybrat naposledy použitý segment z cookie, pokud stále existuje.
+            // Předvybrat naposledy použité zaměření z cookie, pokud stále existuje.
             if (restoredPrefs?.segmentId
                 && [...segmentSelect.options].some((o) => Number(o.value) === restoredPrefs.segmentId)) {
                 segmentSelect.value = String(restoredPrefs.segmentId);
             }
             state.segmentId = Number(segmentSelect.value);
 
-            // Jediný segment: automaticky vybrán, dropdown sbalený na prostý text (spec 5A).
+            // Jediné zaměření: automaticky vybráno, dropdown sbalený na prostý text (spec 5A).
             if (segments.length === 1) {
                 segmentField.hidden = true;
                 segmentSingle.textContent = `Zaměření: ${segments[0].name}`;
                 segmentSingle.hidden = false;
             }
         } catch (error) {
-            showError(`Nepodařilo se načíst segmenty: ${error.message}`);
+            showError(`Nepodařilo se načíst zaměření: ${error.message}`);
         }
     };
 
     // ---- Sekce A -> B: načtení kurzů ----
-    const parseDateInput = (input, endOfDay) => {
-        if (!input.value) return null;
-        const [year, month, day] = input.value.split('-').map(Number);
-        return endOfDay
-            ? new Date(year, month - 1, day, 23, 59, 59)
-            : new Date(year, month - 1, day);
-    };
-
-    const toUnix = (date) => Math.floor(date.getTime() / 1000);
-
     const loadCourses = async () => {
         loadError.hidden = true;
 
@@ -300,31 +512,59 @@
             const result = await api.loadCourses(
                 state.segmentId, toUnix(state.sourceFrom), toUnix(state.sourceTo));
 
-            state.courses = result.courses.map((c) => ({
-                originalId: c.originalId,
-                name: c.name ?? '',
-                description: c.description ?? '',
-                bookingResourceId: c.bookingResourceId,
-                bookingResourceName: c.bookingResourceName ?? '',
-                bookingServiceId: c.bookingServiceId,
-                bookingServiceName: c.bookingServiceName ?? '',
-                capacity: c.capacity,
-                priceWithVat: c.priceWithVat,
-                calendarId: c.calendarId,
-                originalStartDate: new Date(c.startDate * 1000),
-                originalEndDate: new Date(c.endDate * 1000),
-                originalRegistrationEnd: new Date(c.registrationEnd * 1000),
-                lections: c.lections.map((l) => ({
+            state.courses = result.courses.map((c) => {
+                const lections = c.lections.map((l) => ({
                     originalStart: new Date(l.start * 1000),
                     originalEnd: new Date(l.end * 1000),
                     isExcluded: false,
                     isPinned: false,
                     pinnedNewStart: null,
-                })),
-                isExcluded: false,
-            }));
+                }));
+                const course = {
+                    originalId: c.originalId,
+                    name: c.name ?? '',
+                    description: c.description ?? '',
+                    bookingResourceId: c.bookingResourceId,
+                    bookingResourceName: c.bookingResourceName ?? '',
+                    bookingServiceId: c.bookingServiceId,
+                    bookingServiceName: c.bookingServiceName ?? '',
+                    capacity: c.capacity,
+                    priceWithVat: c.priceWithVat,
+                    calendarId: c.calendarId,
+                    originalStartDate: new Date(c.startDate * 1000),
+                    originalEndDate: new Date(c.endDate * 1000),
+                    originalRegistrationEnd: new Date(c.registrationEnd * 1000),
+                    lections,
+                    // Přesahující kurzy se ve výchozím stavu nekopírují (spec 5B, 7.4).
+                    isExcluded: Boolean(c.isOverlapping),
+                    isOverlapping: Boolean(c.isOverlapping),
+                    rhythm: Mapping.detectRhythm(lections),
+                    rhythmLections: [],
+                };
+                course.groupKey = Mapping.courseGroupKey(course);
+                return course;
+            });
+            ui.openGroups.clear();
 
-            renderCourses();
+            // Strategie „Nový rozvrh" (zvolená nebo z cookie) jen pokud jsou nevyloučené kurzy rytmické.
+            const wasRhythm = isRhythm();
+            const wantsRhythm = wasRhythm || pendingPrefStrategy === 'rhythm';
+            pendingPrefStrategy = null;
+            showStrategyNotice('');
+            if (wantsRhythm) {
+                const nonRhythmic = nonRhythmicIncluded();
+                if (nonRhythmic.length === 0) {
+                    setStrategy('rhythm');
+                } else {
+                    setStrategy('weekday');
+                    if (wasRhythm) {
+                        showStrategyNotice('Strategie byla přepnuta na „Zachovat dny v týdnu", protože tyto kurzy '
+                            + `nemají pravidelný týdenní rytmus: ${uniqueSorted(nonRhythmic.map((x) => x.name)).join(', ')}.`);
+                    }
+                }
+            }
+
+            renderOverview();
             sectionOverview.hidden = false;
             sectionTarget.hidden = state.courses.length === 0;
             recalculate();
@@ -337,7 +577,9 @@
 
     // ---- Sekce C: přepočet ----
     const recalculate = () => {
-        const hasInput = state.newFrom !== null && state.courses.length > 0;
+        renderTargetControls();
+
+        const hasInput = hasTargetInput();
         sectionDetail.hidden = !hasInput;
         sectionSettings.hidden = !hasInput;
         if (!hasInput) {
@@ -350,17 +592,102 @@
 
         Mapping.applyMappingToState(state);
 
-        const { effectiveNewFrom } = Mapping.calculateShift(state.sourceFrom, state.newFrom, state.shiftStrategy);
-        effectiveFromEl.textContent = formatDate(effectiveNewFrom);
+        let periodFrom;
+        if (isRhythm()) {
+            // Strategie „Nový rozvrh": místo efektivního OD se ukazuje první vygenerovaná lekce (spec 5C).
+            periodFrom = state.newFrom;
+            const firstLection = Mapping.calculatePeriodStartDate(state.courses, 'rhythm');
+            effectiveFromEl.textContent = firstLection ? formatDate(firstLection) : '–';
+        } else {
+            const { effectiveNewFrom } = Mapping.calculateShift(state.sourceFrom, state.newFrom, state.shiftStrategy);
+            periodFrom = effectiveNewFrom;
+            effectiveFromEl.textContent = formatDate(effectiveNewFrom);
+        }
 
-        const periodEnd = Mapping.calculatePeriodEndDate(state.courses);
+        const periodEnd = Mapping.calculatePeriodEndDate(state.courses, state.shiftStrategy);
         computedToEl.textContent = periodEnd ? formatDate(periodEnd) : '–';
 
-        schedulePeriodCheck(effectiveNewFrom, periodEnd);
+        schedulePeriodCheck(periodFrom, periodEnd);
 
         renderDetail();
+        renderNameSummary();
         updateCreateSection();
     };
+
+    /** Popisky, dostupnost a parametry strategie v sekci C. */
+    const renderTargetControls = () => {
+        const rhythm = isRhythm();
+        newFromLabel.textContent = rhythm ? 'Začátek nového bloku' : 'Nové datum OD';
+        newFromHelpShift.hidden = rhythm;
+        newFromHelpRhythm.hidden = !rhythm;
+        effectiveFromLabel.textContent = rhythm ? 'První lekce' : 'Efektivní datum OD';
+
+        // „Nový rozvrh" jen pokud jsou všechny nevyloučené kurzy rytmické (spec 5C).
+        const nonRhythmic = nonRhythmicIncluded();
+        rhythmRadio.disabled = nonRhythmic.length > 0 && !rhythm;
+        rhythmOption.classList.toggle('is-disabled', rhythmRadio.disabled);
+        rhythmUnavailable.hidden = nonRhythmic.length === 0;
+        rhythmUnavailableText.textContent = 'Nový rozvrh nejde použít, protože tyto kurzy nemají pravidelný '
+            + `týdenní rytmus: ${uniqueSorted(nonRhythmic.map((c) => c.name)).join(', ')}.`;
+
+        rhythmParams.hidden = !rhythm;
+        if (!rhythm) return;
+
+        const byCount = state.rhythmEndMode === 'count';
+        newToField.hidden = byCount;
+        lectionCountField.hidden = !byCount;
+
+        let error = '';
+        if (!byCount && state.newFrom && state.newTo && Mapping.daysBetween(state.newFrom, state.newTo) < 0) {
+            error = 'Konec nového bloku musí být stejný nebo pozdější než začátek bloku.';
+        } else if (byCount && state.lectionCount !== null && !(Number.isInteger(state.lectionCount)
+            && state.lectionCount >= Mapping.LECTION_COUNT_MIN && state.lectionCount <= Mapping.LECTION_COUNT_MAX)) {
+            error = `Počet lekcí musí být celé číslo ${Mapping.LECTION_COUNT_MIN}–${Mapping.LECTION_COUNT_MAX}.`;
+        }
+        rhythmError.textContent = error;
+        rhythmError.hidden = !error;
+        newToInput.classList.toggle('is-invalid', !byCount && Boolean(error));
+        lectionCountInput.classList.toggle('is-invalid', byCount && Boolean(error));
+
+        renderExcludedDays();
+        holidaysAddButton.disabled = holidayRange() === null;
+        holidaysAddButton.title = holidaysAddButton.disabled
+            ? 'Nejdřív zadejte začátek a konec nového bloku.'
+            : '';
+    };
+
+    const renderExcludedDays = () => {
+        excludedList.innerHTML = '';
+        state.excludedDays.forEach((range, index) => {
+            const item = document.createElement('li');
+            item.className = 'rds-badge rds-badge--neutral duplicator__chip';
+
+            const text = document.createElement('span');
+            text.textContent = formatDayRange(range.from, range.to);
+            item.appendChild(text);
+            if (range.label) {
+                const label = document.createElement('span');
+                label.className = 'duplicator__chip-label';
+                label.textContent = range.label;
+                item.appendChild(label);
+            }
+
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'duplicator__chip-remove';
+            remove.textContent = '✕';
+            remove.title = 'Odebrat vynechaný den';
+            remove.setAttribute('aria-label', `Odebrat ${text.textContent}`);
+            remove.addEventListener('click', () => applyRhythmChange(() => {
+                state.excludedDays.splice(index, 1);
+            }));
+            item.appendChild(remove);
+
+            excludedList.appendChild(item);
+        });
+    };
+
+    const sortExcludedDays = () => state.excludedDays.sort((a, b) => (a.from - b.from) || (a.to - b.to));
 
     // ---- Kontrola, zda v novém období již existují kurzy ----
     let periodCheckTimer = null;
@@ -370,17 +697,19 @@
 
     /** Naplánuje kontrolu nového období (debounce 500 ms; null = skrýt). */
     const schedulePeriodCheck = (from, to) => {
-        clearTimeout(periodCheckTimer);
         if (!from || !to) {
+            clearTimeout(periodCheckTimer);
             periodCheckSeq++;
             periodCheck.hidden = true;
             lastPeriodCheckKey = null;
             return;
         }
-        // Beze změny segmentu/dat kontrolu neopakuj - jinak hláška o načítání
-        // probliká a posune stránku i při zavření editace bez úpravy.
+        // Beze změny zaměření/dat kontrolu neopakuj - jinak hláška o načítání
+        // probliká a posune stránku i při zavření editace bez úpravy. Čekající
+        // kontrolu stejného intervalu přitom nerušit (jinak by se nikdy neprovedla).
         const key = `${state.segmentId}|${toUnix(from)}|${toUnix(to)}`;
         if (key === lastPeriodCheckKey) return;
+        clearTimeout(periodCheckTimer);
         lastPeriodCheckKey = key;
         periodCheckTimer = setTimeout(() => checkNewPeriod(from, to), 500);
     };
@@ -410,15 +739,7 @@
         }
     };
 
-    // ---- Sekce B: render přehledu ----
-    const renderSummary = () => {
-        const included = state.courses.filter((c) => !c.isExcluded);
-        const lectionCount = included.reduce((sum, c) => sum + c.lections.length, 0);
-        const excludedCount = state.courses.length - included.length;
-        courseSummary.textContent =
-            `Načteno ${included.length} kurzů s celkem ${lectionCount} lekcemi. Vyloučeno ${excludedCount} kurzů.`;
-    };
-
+    // ---- Společné stavební bloky tabulek ----
     const buildTable = (labels) => {
         const table = document.createElement('table');
         table.className = 'rds-table';
@@ -436,10 +757,173 @@
         return { table, body };
     };
 
-    const renderCourses = () => {
-        courseList.innerHTML = '';
+    /** Pomocník pro buňky řádku: cell(text | null, className). */
+    const rowBuilder = (row) => (content, className = '') => {
+        const td = document.createElement('td');
+        if (className) td.className = className;
+        if (content !== null && content !== undefined) td.textContent = content;
+        row.appendChild(td);
+        return td;
+    };
 
-        if (state.courses.length === 0) {
+    const badge = (text, variant, title = '') => {
+        const span = document.createElement('span');
+        span.className = `rds-badge rds-badge--${variant} duplicator__badge`;
+        span.textContent = text;
+        if (title) span.title = title;
+        return span;
+    };
+
+    const smallButton = (text, title, onClick) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'rds-btn rds-btn--ghost rds-btn--sm';
+        button.textContent = text;
+        if (title) button.title = title;
+        button.addEventListener('click', onClick);
+        return button;
+    };
+
+    const courseSourceLabel = (course) => course.bookingServiceName
+        ? `${course.bookingResourceName} / ${course.bookingServiceName}`
+        : course.bookingResourceName;
+
+    /** Zdroje/služby skupiny: zkráceně, celý seznam v tooltipu (spec 5B). */
+    const fillGroupSources = (td, courses) => {
+        const labels = uniqueSorted(courses.map(courseSourceLabel));
+        td.textContent = labels.length === 1 ? labels[0] : `${labels[0]} + ${labels.length - 1} další`;
+        if (labels.length > 1) td.title = labels.join('\n');
+    };
+
+    const capacityLabel = (courses) => {
+        const values = courses.map((c) => c.capacity);
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        return min === max ? String(min) : `${min}–${max}`;
+    };
+
+    const numberRangeLabel = (values) => {
+        if (values.length === 0) return '–';
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        return min === max ? String(min) : `${min}–${max}`;
+    };
+
+    /** Čas začátku kurzu = čas první lekce (nebo StartDate, pokud lekce nejsou). */
+    const courseStartTime = (course) => {
+        const first = course.lections.length > 0
+            ? course.lections.reduce((min, l) => (l.originalStart < min ? l.originalStart : min), course.lections[0].originalStart)
+            : course.originalStartDate;
+        return first;
+    };
+
+    const sortByStartTime = (courses) => [...courses].sort((a, b) =>
+        (courseStartTime(a).getHours() * 60 + courseStartTime(a).getMinutes())
+        - (courseStartTime(b).getHours() * 60 + courseStartTime(b).getMinutes()));
+
+    const startTimesLabel = (courses) => sortByStartTime(courses)
+        .map((c) => formatTime(courseStartTime(c)))
+        .filter((value, index, all) => all.indexOf(value) === index)
+        .join(', ');
+
+    /** Rozsah dat; u přesahujících kurzů zvýrazní hranici, kterou kurz přesahuje (spec 5B). */
+    const fillDateRange = (td, from, to, highlightOverlap) => {
+        const start = document.createElement('span');
+        start.textContent = formatDate(from);
+        const end = document.createElement('span');
+        end.textContent = formatDate(to);
+        if (highlightOverlap) {
+            if (from < state.sourceFrom) {
+                start.className = 'duplicator__boundary';
+                start.title = 'Začíná před datem OD zdrojového období';
+            }
+            if (to > state.sourceTo) {
+                end.className = 'duplicator__boundary';
+                end.title = 'Končí po datu DO zdrojového období';
+            }
+        }
+        td.append(start, ' – ', end);
+    };
+
+    const groupRange = (courses) => ({
+        from: new Date(Math.min(...courses.map((c) => c.originalStartDate.getTime()))),
+        to: new Date(Math.max(...courses.map((c) => c.originalEndDate.getTime()))),
+    });
+
+    const expandToggle = (key, onToggle) => {
+        const open = ui.openGroups.has(key);
+        return smallButton(open ? '▾ sbalit' : '▸ rozbalit', open ? 'Sbalit skupinu' : 'Rozbalit skupinu', () => {
+            if (ui.openGroups.has(key)) ui.openGroups.delete(key); else ui.openGroups.add(key);
+            onToggle();
+        });
+    };
+
+    /** Křížek (✕ / ↩) pro kurz nebo celou skupinu - vyloučí / vrátí všechny kurzy. */
+    const excludeToggle = (courses) => {
+        const allExcluded = courses.every((c) => c.isExcluded);
+        const group = courses.length > 1;
+        return smallButton(
+            allExcluded ? '↩' : '✕',
+            allExcluded
+                ? (group ? 'Vrátit všechny kurzy skupiny do duplikace' : 'Vrátit do duplikace')
+                : (group ? 'Vyloučit všechny kurzy skupiny z duplikace' : 'Vyloučit z duplikace'),
+            () => setCoursesExcluded(courses, !allExcluded));
+    };
+
+    /** Checkbox „Zahrnout" u přesahujících kurzů (výchozí nezaškrtnuto = vyloučeno). */
+    const includeCheckbox = (courses) => {
+        const label = document.createElement('label');
+        label.className = 'rds-check';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        const includedCount = courses.filter((c) => !c.isExcluded).length;
+        input.checked = includedCount === courses.length;
+        input.indeterminate = includedCount > 0 && includedCount < courses.length;
+        input.addEventListener('change', () => setCoursesExcluded(courses, !input.checked));
+        label.append(input, 'Zahrnout');
+        return label;
+    };
+
+    /** Název skupiny: „Název ×N" + počet vyloučených / zahrnutých (spec 5B). */
+    const fillGroupName = (td, name, courses, overlapMode) => {
+        td.append(name, ' ');
+        const count = document.createElement('span');
+        count.className = 'duplicator__group-count';
+        const excluded = courses.filter((c) => c.isExcluded).length;
+        let text = `×${courses.length}`;
+        if (overlapMode) {
+            const included = courses.length - excluded;
+            if (included > 0 && included < courses.length) text += `, zahrnuto ${included}`;
+        } else if (excluded > 0 && excluded < courses.length) {
+            text += `, vyloučeno ${excluded}`;
+        }
+        count.textContent = text;
+        td.appendChild(count);
+    };
+
+    // ---- Sekce B: přehled načtených kurzů ----
+    const renderSummary = () => {
+        const inPeriod = state.courses.filter((c) => !c.isOverlapping);
+        const overlapping = state.courses.filter((c) => c.isOverlapping);
+        const included = inPeriod.filter((c) => !c.isExcluded);
+        const lectionCount = included.reduce((sum, c) => sum + c.lections.length, 0);
+        const excludedCount = inPeriod.length - included.length;
+        let text = `Načteno ${included.length} kurzů s celkem ${lectionCount} lekcemi. Vyloučeno ${excludedCount} kurzů.`;
+        if (overlapping.length > 0) {
+            const includedOverlapping = overlapping.filter((c) => !c.isExcluded).length;
+            text += ` Přesahuje období: ${overlapping.length} kurzů (zahrnuto ${includedOverlapping}).`;
+        }
+        courseSummary.textContent = text;
+    };
+
+    const renderOverview = () => {
+        courseList.innerHTML = '';
+        overlapList.innerHTML = '';
+
+        const inPeriod = state.courses.filter((c) => !c.isOverlapping);
+        const overlapping = state.courses.filter((c) => c.isOverlapping);
+
+        if (inPeriod.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'rds-empty';
             const icon = document.createElement('div');
@@ -452,137 +936,284 @@
             text.textContent = 'V zadaném období nejsou žádné kurzy. Zkuste upravit zaměření nebo rozsah dat.';
             empty.append(icon, title, text);
             courseList.appendChild(empty);
+        } else {
+            courseList.appendChild(buildOverviewTable(inPeriod, false));
+        }
+
+        overlapBlock.hidden = overlapping.length === 0;
+        if (overlapping.length > 0) {
+            overlapTitle.textContent = `Přesahují zdrojové období (${overlapping.length} kurzů)`;
+            overlapBlock.open = ui.overlapOpen;
+            overlapList.appendChild(buildOverviewTable(overlapping, true));
+        }
+
+        if (state.courses.length === 0) {
             courseSummary.textContent = '';
-            return;
+        } else {
+            renderSummary();
         }
+    };
 
+    const buildOverviewTable = (courses, overlapMode) => {
         const { table, body } = buildTable(
-            ['Název kurzu', 'Zdroj / služba', 'Kapacita', 'Lekcí', 'Rozsah dat', '']);
-        for (const course of state.courses) {
-            body.appendChild(renderCourseRow(course));
+            ['Název kurzu', 'Zdroj / služba', 'Kapacita', 'Lekcí', 'Rozsah dat', 'Začátek', overlapMode ? 'Zahrnout' : '', '']);
+        for (const group of Mapping.groupCourses(courses)) {
+            if (group.courses.length === 1) {
+                body.appendChild(renderOverviewCourseRow(group.courses[0], overlapMode, false));
+                continue;
+            }
+            const key = `B|${overlapMode ? 'over' : 'main'}|${group.key}`;
+            body.appendChild(renderOverviewGroupRow(group, overlapMode, key));
+            if (ui.openGroups.has(key)) {
+                for (const course of sortByStartTime(group.courses)) {
+                    body.appendChild(renderOverviewCourseRow(course, overlapMode, true));
+                }
+            }
         }
-        courseList.appendChild(table);
-        renderSummary();
+        return table;
     };
 
-    const courseSourceLabel = (course) => course.bookingServiceName
-        ? `${course.bookingResourceName} / ${course.bookingServiceName}`
-        : course.bookingResourceName;
-
-    const excludeToggle = (course) => {
-        const toggle = document.createElement('button');
-        toggle.type = 'button';
-        toggle.className = 'rds-btn rds-btn--ghost rds-btn--sm';
-        toggle.textContent = course.isExcluded ? '↩' : '✕';
-        toggle.title = course.isExcluded ? 'Vrátit do duplikace' : 'Vyloučit z duplikace';
-        toggle.addEventListener('click', () => {
-            course.isExcluded = !course.isExcluded;
-            renderCourses();
-            recalculate();
-        });
-        return toggle;
-    };
-
-    const renderCourseRow = (course) => {
+    const renderOverviewGroupRow = (group, overlapMode, key) => {
+        const { courses } = group;
         const row = document.createElement('tr');
-        if (course.isExcluded) row.className = 'is-excluded';
+        row.className = 'is-group';
+        // Nezahrnutý přesahující kurz je výchozí stav - jen ztlumit, nepřeškrtávat (hranice musí být čitelná).
+        if (courses.every((c) => c.isExcluded)) row.classList.add(overlapMode ? 'is-muted' : 'is-excluded');
+        const cell = rowBuilder(row);
 
-        const cell = (content, className = '') => {
-            const td = document.createElement('td');
-            if (className) td.className = className;
-            td.textContent = content;
-            row.appendChild(td);
-            return td;
-        };
+        fillGroupName(cell(null, 'cell-strong'), courses[0].name, courses, overlapMode);
+        fillGroupSources(cell(null), courses);
+        cell(capacityLabel(courses));
+        cell(numberRangeLabel(courses.map((c) => c.lections.length)));
+        const { from, to } = groupRange(courses);
+        fillDateRange(cell(null), from, to, overlapMode);
+        cell(startTimesLabel(courses));
+        cell(null, 'cell-action').appendChild(overlapMode ? includeCheckbox(courses) : excludeToggle(courses));
+        cell(null, 'cell-action').appendChild(expandToggle(key, renderOverview));
+        return row;
+    };
+
+    const renderOverviewCourseRow = (course, overlapMode, isChild) => {
+        const row = document.createElement('tr');
+        if (isChild) row.classList.add('is-child');
+        if (course.isExcluded) row.classList.add(overlapMode ? 'is-muted' : 'is-excluded');
+        const cell = rowBuilder(row);
 
         cell(course.name, 'cell-strong');
         cell(courseSourceLabel(course));
         cell(String(course.capacity));
         cell(String(course.lections.length));
-        cell(`${formatDate(course.originalStartDate)} – ${formatDate(course.originalEndDate)}`);
-
-        const actionCell = document.createElement('td');
-        actionCell.className = 'cell-action';
-        actionCell.appendChild(excludeToggle(course));
-        row.appendChild(actionCell);
-
+        fillDateRange(cell(null), course.originalStartDate, course.originalEndDate, overlapMode);
+        cell(formatTime(courseStartTime(course)));
+        cell(null, 'cell-action').appendChild(overlapMode ? includeCheckbox([course]) : excludeToggle([course]));
+        cell(null, 'cell-action');
         return row;
     };
 
     // ---- Sekce D: detail s novými datumy ----
 
-    /** Nový rozsah kurzu: min start a max konec přes ne-vyloučené lekce. */
+    /** Nový rozsah kurzu: min start a max konec přes aktivní lekce aktuální strategie. */
     const courseNewRange = (course) => {
         let min = null;
         let max = null;
-        for (const lection of course.lections) {
-            if (lection.isExcluded) continue;
-            const start = lectionNewStart(lection);
-            if (!start) continue;
-            const end = new Date(start.getTime() + lectionLengthMinutes(lection) * 60000);
+        for (const { start, lengthMinutes } of activeLections(course)) {
+            const end = new Date(start.getTime() + lengthMinutes * 60000);
             if (min === null || start < min) min = start;
             if (max === null || end > max) max = end;
         }
         return { min, max };
     };
 
+    const pastLectionCount = (course) => activeLections(course).filter((x) => isPast(x.start)).length;
+
+    /** Popis rytmu kurzu / skupiny: „út 8:30, 45 min", u skupiny „út 8:30, 9:30, 10:15, 45 min" (spec 5D). */
+    const rhythmLabel = (courses) => {
+        const rhythms = courses.map((c) => c.rhythm).filter(Boolean);
+        if (rhythms.length === 0) return '–';
+        const days = uniqueSorted(rhythms.map((r) => String(r.weekday)))
+            .map((d) => weekdayShortByIndex(Number(d))).join(', ');
+        const times = [...new Set(rhythms.map((r) => r.time))].sort().map(formatRhythmTime).join(', ');
+        const lengths = numberRangeLabel(rhythms.map((r) => r.lengthMinutes));
+        return `${days} ${times}, ${lengths} min`;
+    };
+
+    /** Nejčastější počet nových lekcí (při shodě vyšší) - pro zvýraznění odlišných (spec 5D). */
+    const mostCommon = (values) => {
+        const counts = new Map();
+        for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+        let best = null;
+        for (const [value, count] of counts) {
+            if (best === null || count > best.count || (count === best.count && value > best.value)) {
+                best = { value, count };
+            }
+        }
+        return best?.value ?? null;
+    };
+
     const renderDetail = () => {
         courseDetailList.innerHTML = '';
-        if (state.courses.length === 0) return;
+        const courses = detailCourses();
+        if (courses.length === 0) {
+            lectionCountWarning.hidden = true;
+            return;
+        }
 
-        const { table, body } = buildTable(
-            ['Název kurzu', 'Zdroj / služba', 'Kapacita', 'Lekcí', 'Původní (OD – DO)', 'Nové (OD – DO)', '', '']);
-        for (const course of state.courses) {
-            body.appendChild(renderDetailRow(course));
-            if (course._detailOpen) {
-                body.appendChild(renderLectionsRow(course));
+        // Rozdílný počet lekcí při strategii „Nový rozvrh" (spec 5D).
+        let commonCount = null;
+        lectionCountWarning.hidden = true;
+        if (isRhythm()) {
+            const counts = courses.filter((c) => !c.isExcluded).map((c) => activeLections(c).length);
+            if (new Set(counts).size > 1) {
+                commonCount = mostCommon(counts);
+                lectionCountWarning.textContent =
+                    `Kurzy mají různý počet lekcí (${Math.min(...counts)}–${Math.max(...counts)}) kvůli vynechaným dnům.`;
+                lectionCountWarning.hidden = false;
+            }
+        }
+
+        const labels = isRhythm()
+            ? ['Název kurzu', 'Zdroj / služba', 'Kapacita', 'Rytmus', 'Původní (OD – DO, lekcí)', 'Nové (OD – DO, lekcí)', '', '']
+            : ['Název kurzu', 'Zdroj / služba', 'Kapacita', 'Lekcí', 'Původní (OD – DO)', 'Nové (OD – DO)', '', ''];
+        const { table, body } = buildTable(labels);
+
+        const appendCourse = (course, isChild) => {
+            body.appendChild(renderDetailRow(course, isChild, commonCount));
+            if (course._detailOpen) body.appendChild(renderLectionsRow(course));
+        };
+
+        for (const group of Mapping.groupCourses(courses)) {
+            if (group.courses.length === 1) {
+                appendCourse(group.courses[0], false);
+                continue;
+            }
+            const key = `D|${group.key}`;
+            body.appendChild(renderDetailGroupRow(group, key, commonCount));
+            if (ui.openGroups.has(key)) {
+                for (const course of sortByStartTime(group.courses)) appendCourse(course, true);
             }
         }
         courseDetailList.appendChild(table);
     };
 
-    const renderDetailRow = (course) => {
+    /** Název nového kurzu s hromadnou úpravou (původní v tooltipu) a stavovými značkami. */
+    const fillDetailName = (td, course) => {
+        const renamed = newName(course);
+        if (renamed.trim() === '') {
+            td.appendChild(badge('Prázdný název', 'danger', `Původní název: ${course.name}`));
+            return;
+        }
+        td.append(renamed);
+        if (renamed !== course.name) {
+            td.title = `Původní název: ${course.name}`;
+            td.append(' ', badge('nový název', 'info', `Původní název: ${course.name}`));
+        }
+    };
+
+    /** Značky stavu kurzu / skupiny: přesahující, bez lekcí, lekce v minulosti. */
+    const appendCourseBadges = (td, courses) => {
+        const included = courses.filter((c) => !c.isExcluded);
+        if (courses.some((c) => c.isOverlapping)) {
+            td.append(' ', badge('přesahuje období', 'warning', 'Kurz přesahuje zdrojové období - kopíruje se celý.'));
+        }
+        if (included.some((c) => activeLections(c).length === 0)) {
+            td.append(' ', badge('Nevznikne žádná lekce', 'warning', 'Kurz se při vytváření přeskočí.'));
+        }
+        if (included.some((c) => pastLectionCount(c) > 0)) {
+            td.append(' ', badge('lekce v minulosti', 'danger', 'Lekce v minulosti vylučte nebo změňte nové datum OD.'));
+        }
+    };
+
+    /** Buňka rozsahu (+ u strategie „Nový rozvrh" druhý řádek s počtem lekcí, případně zvýrazněným). */
+    const fillRangeCell = (td, rangeText, count, highlight) => {
+        td.append(rangeText);
+        if (count === null) return;
+        const line = document.createElement('span');
+        line.className = 'duplicator__subline';
+        if (highlight) line.classList.add('duplicator__highlight');
+        line.textContent = `${count} lekcí`;
+        td.appendChild(line);
+    };
+
+    const renderDetailRow = (course, isChild, commonCount) => {
         const row = document.createElement('tr');
-        if (course.isExcluded) row.className = 'is-excluded';
+        if (isChild) row.classList.add('is-child');
+        if (course.isExcluded) row.classList.add('is-excluded');
+        const cell = rowBuilder(row);
+        const rhythm = isRhythm();
 
-        const cell = (content, className = '') => {
-            const td = document.createElement('td');
-            if (className) td.className = className;
-            td.textContent = content;
-            row.appendChild(td);
-            return td;
-        };
-
-        const activeLections = course.lections.filter((l) => !l.isExcluded).length;
+        const active = activeLections(course).length;
         const { min, max } = courseNewRange(course);
 
-        cell(course.name, 'cell-strong');
+        const nameCell = cell(null, 'cell-strong');
+        fillDetailName(nameCell, course);
+        appendCourseBadges(nameCell, [course]);
         cell(courseSourceLabel(course));
         cell(String(course.capacity));
-        cell(activeLections === course.lections.length
-            ? String(course.lections.length)
-            : `${activeLections} z ${course.lections.length}`);
-        cell(`${formatDate(course.originalStartDate)} – ${formatDate(course.originalEndDate)}`);
-        cell(min && max ? `${formatDate(min)} – ${formatDate(max)}` : '–');
+        if (rhythm) {
+            cell(rhythmLabel([course]));
+        } else {
+            cell(active === course.lections.length ? String(active) : `${active} z ${course.lections.length}`);
+        }
+        fillRangeCell(cell(null), `${formatDate(course.originalStartDate)} – ${formatDate(course.originalEndDate)}`,
+            rhythm ? course.lections.length : null, false);
+        fillRangeCell(cell(null), min && max ? `${formatDate(min)} – ${formatDate(max)}` : '–',
+            rhythm && course.rhythm ? active : null,
+            rhythm && !course.isExcluded && commonCount !== null && active !== commonCount);
 
-        const excludeCell = document.createElement('td');
-        excludeCell.className = 'cell-action';
-        excludeCell.appendChild(excludeToggle(course));
-        row.appendChild(excludeCell);
-
-        const detailCell = document.createElement('td');
-        detailCell.className = 'cell-action';
-        const detailToggle = document.createElement('button');
-        detailToggle.type = 'button';
-        detailToggle.className = 'rds-btn rds-btn--ghost rds-btn--sm';
-        detailToggle.textContent = course._detailOpen ? '▾ detail' : '▸ detail';
-        detailToggle.addEventListener('click', () => {
+        cell(null, 'cell-action').appendChild(excludeToggle([course]));
+        cell(null, 'cell-action').appendChild(smallButton(course._detailOpen ? '▾ detail' : '▸ detail', '', () => {
             course._detailOpen = !course._detailOpen;
             renderDetail();
-        });
-        detailCell.appendChild(detailToggle);
-        row.appendChild(detailCell);
+        }));
+        return row;
+    };
 
+    const renderDetailGroupRow = (group, key, commonCount) => {
+        const { courses } = group;
+        const row = document.createElement('tr');
+        row.className = 'is-group';
+        if (courses.every((c) => c.isExcluded)) row.classList.add('is-excluded');
+        const cell = rowBuilder(row);
+        const rhythm = isRhythm();
+
+        const included = courses.filter((c) => !c.isExcluded);
+        const counted = included.length > 0 ? included : courses;
+        const activeCounts = counted.map((c) => activeLections(c).length);
+
+        let min = null;
+        let max = null;
+        for (const course of counted) {
+            const range = courseNewRange(course);
+            if (range.min && (min === null || range.min < min)) min = range.min;
+            if (range.max && (max === null || range.max > max)) max = range.max;
+        }
+
+        const nameCell = cell(null, 'cell-strong');
+        const renamed = newName(courses[0]);
+        if (renamed.trim() === '') {
+            nameCell.appendChild(badge('Prázdný název', 'danger', `Původní název: ${courses[0].name}`));
+            fillGroupName(nameCell, '', courses, false);
+        } else {
+            fillGroupName(nameCell, renamed, courses, false);
+            if (renamed !== courses[0].name) {
+                nameCell.title = `Původní název: ${courses[0].name}`;
+                nameCell.append(' ', badge('nový název', 'info', `Původní název: ${courses[0].name}`));
+            }
+        }
+        appendCourseBadges(nameCell, courses);
+
+        fillGroupSources(cell(null), courses);
+        cell(capacityLabel(courses));
+        cell(rhythm ? rhythmLabel(courses) : numberRangeLabel(activeCounts));
+        const original = groupRange(courses);
+        fillRangeCell(cell(null), `${formatDate(original.from)} – ${formatDate(original.to)}`,
+            rhythm ? numberRangeLabel(courses.map((c) => c.lections.length)) : null, false);
+        fillRangeCell(cell(null), min && max ? `${formatDate(min)} – ${formatDate(max)}` : '–',
+            rhythm ? numberRangeLabel(activeCounts) : null,
+            rhythm && commonCount !== null && included.some((c) => activeLections(c).length !== commonCount));
+
+        cell(null, 'cell-action').appendChild(excludeToggle(courses));
+        cell(null, 'cell-action').appendChild(expandToggle(key, renderDetail));
         return row;
     };
 
@@ -592,32 +1223,68 @@
         cell.className = 'lections-cell';
         cell.colSpan = 8;
 
-        const { table, body } = buildTable(
-            ['#', 'Původní datum', 'Nové datum', 'Délka', '', '']);
-        course.lections.forEach((lection, index) => {
-            body.appendChild(renderLectionRow(course, lection, index));
-        });
-        cell.appendChild(table);
+        if (isRhythm()) {
+            // Vygenerované lekce (spec 5D) + přepínač původních lekcí (jen pro čtení).
+            const toolbar = document.createElement('div');
+            toolbar.className = 'lections-toolbar';
+            toolbar.appendChild(smallButton(
+                course._showOriginal ? 'Skrýt původní lekce' : 'Ukázat původní lekce', '', () => {
+                    course._showOriginal = !course._showOriginal;
+                    renderDetail();
+                }));
+            cell.appendChild(toolbar);
+
+            if (course.rhythmLections.length === 0) {
+                const empty = document.createElement('p');
+                empty.className = 'duplicator__warning';
+                empty.textContent = 'Nevznikne žádná lekce: všechny dny kurzu v novém bloku jsou vynechané, '
+                    + 'nebo blok končí dřív, než nastane den v týdnu kurzu. Kurz se při vytváření přeskočí.';
+                cell.appendChild(empty);
+            } else {
+                const { table, body } = buildTable(['#', 'Nové datum', 'Délka', '', '']);
+                course.rhythmLections.forEach((lection, index) => {
+                    body.appendChild(renderLectionRow(lection, index, null, course.rhythm.lengthMinutes));
+                });
+                cell.appendChild(table);
+            }
+
+            if (course._showOriginal) {
+                const caption = document.createElement('p');
+                caption.className = 'rds-label lections-caption';
+                caption.textContent = 'Původní lekce';
+                const { table, body } = buildTable(['#', 'Původní datum', 'Délka']);
+                course.lections.forEach((lection, index) => {
+                    const lectionRow = document.createElement('tr');
+                    const lectionCell = rowBuilder(lectionRow);
+                    lectionCell(String(index + 1));
+                    lectionCell(formatDateTime(lection.originalStart));
+                    lectionCell(`${lectionLengthMinutes(lection)} min`);
+                    body.appendChild(lectionRow);
+                });
+                cell.append(caption, table);
+            }
+        } else {
+            const { table, body } = buildTable(['#', 'Původní datum', 'Nové datum', 'Délka', '', '']);
+            course.lections.forEach((lection, index) => {
+                body.appendChild(renderLectionRow(lection, index, lection.originalStart, lectionLengthMinutes(lection)));
+            });
+            cell.appendChild(table);
+        }
+
         row.appendChild(cell);
         return row;
     };
 
-    const renderLectionRow = (course, lection, index) => {
+    /** Řádek lekce; originalStart = null u vygenerovaných lekcí (bez sloupce „Původní datum"). */
+    const renderLectionRow = (lection, index, originalStart, lengthMinutes) => {
         const row = document.createElement('tr');
         if (lection.isExcluded) row.className = 'is-excluded';
-
-        const cell = (content, className = '') => {
-            const td = document.createElement('td');
-            if (className) td.className = className;
-            if (content !== null) td.textContent = content;
-            row.appendChild(td);
-            return td;
-        };
+        const cell = rowBuilder(row);
 
         cell(String(index + 1));
-        cell(formatDateTime(lection.originalStart));
+        if (originalStart) cell(formatDateTime(originalStart));
 
-        // Nové datum: klik -> inline edit (datetime-local), enter potvrdí, esc/blur zruší.
+        // Nové datum: klik -> inline edit (datetime-local), Enter / opuštění pole uloží, Escape zruší.
         const newStart = lectionNewStart(lection);
         const newCell = cell(null);
         if (lection.isPinned) {
@@ -627,38 +1294,33 @@
             newCell.appendChild(pin);
         }
         newCell.appendChild(document.createTextNode(newStart ? formatDateTime(newStart) : '–'));
+        if (newStart && !lection.isExcluded && isPast(newStart)) {
+            row.classList.add('is-invalid');
+            newCell.append(' ', badge('v minulosti', 'danger'));
+        }
         if (newStart && !lection.isExcluded) {
             newCell.classList.add('cell-editable');
             newCell.title = 'Klikněte pro ruční úpravu data';
             newCell.addEventListener('click', () => beginLectionEdit(newCell, lection));
         }
 
-        cell(`${lectionLengthMinutes(lection)} min`);
+        cell(`${lengthMinutes} min`);
 
-        const excludeCell = cell(null, 'cell-action');
-        const toggle = document.createElement('button');
-        toggle.type = 'button';
-        toggle.className = 'rds-btn rds-btn--ghost rds-btn--sm';
-        toggle.textContent = lection.isExcluded ? '↩' : '✕';
-        toggle.title = lection.isExcluded ? 'Vrátit lekci do duplikace' : 'Vyloučit lekci z duplikace';
-        toggle.addEventListener('click', () => {
-            lection.isExcluded = !lection.isExcluded;
-            recalculate();
-        });
-        excludeCell.appendChild(toggle);
+        cell(null, 'cell-action').appendChild(smallButton(
+            lection.isExcluded ? '↩' : '✕',
+            lection.isExcluded ? 'Vrátit lekci do duplikace' : 'Vyloučit lekci z duplikace',
+            () => {
+                lection.isExcluded = !lection.isExcluded;
+                recalculate();
+            }));
 
         const pinCell = cell(null, 'cell-action');
         if (lection.isPinned) {
-            const unpin = document.createElement('button');
-            unpin.type = 'button';
-            unpin.className = 'rds-btn rds-btn--ghost rds-btn--sm';
-            unpin.textContent = 'obnovit auto výpočet';
-            unpin.addEventListener('click', () => {
+            pinCell.appendChild(smallButton('obnovit auto výpočet', '', () => {
                 lection.isPinned = false;
                 lection.pinnedNewStart = null;
                 recalculate();
-            });
-            pinCell.appendChild(unpin);
+            }));
         }
 
         return row;
@@ -722,28 +1384,57 @@
         input.focus();
     };
 
+    // ---- Sekce E: hromadná úprava názvů ----
+    const renderNameSummary = () => {
+        nameSummary.hidden = state.nameFind === '';
+        if (nameSummary.hidden) return;
+        const changed = detailCourses().filter((c) => !c.isExcluded && newName(c) !== c.name).length;
+        nameSummary.textContent = `Upraví se název u ${changed} kurzů.`;
+    };
+
     // ---- Sekce F: potvrzení a vytvoření ----
 
     /**
      * Kurzy k vytvoření: ne-vyloučené, se spočteným newRegistrationEnd a aspoň jednou
-     * ne-vyloučenou lekcí se spočteným novým startem. Podmínka newRegistrationEnd brání
-     * pozdějšímu toUnix(null) v buildCreateRequest (newRegistrationEnd je null, dokud
-     * applyMappingToState nenajde nový start kurzu).
+     * aktivní lekcí (u „Nový rozvrh" z rhythmLections). Kurzy s 0 lekcemi se přeskočí (spec 8).
+     * Podmínka newRegistrationEnd brání pozdějšímu toUnix(null) v buildCreateRequest.
      */
     const coursesToCreate = () => state.courses
         .filter((c) => !c.isExcluded && c.newRegistrationEnd)
         .map((course) => ({
             course,
-            lections: course.lections.filter((l) => !l.isExcluded && lectionNewStart(l)),
+            lections: activeLections(course).sort((a, b) => a.start - b.start),
         }))
         .filter((x) => x.lections.length > 0);
 
     const updateCreateSection = () => {
-        const toCreate = coursesToCreate();
+        const hasInput = hasTargetInput();
+        const toCreate = hasInput ? coursesToCreate() : [];
         const lectionCount = toCreate.reduce((sum, x) => sum + x.lections.length, 0);
         createSummary.textContent =
             `Bude vytvořeno ${toCreate.length} kurzů s celkem ${lectionCount} lekcemi.`;
-        createButton.disabled = state.newFrom === null || toCreate.length === 0;
+
+        // Blokující chyby (spec 5E, 5F, 8).
+        const blockers = [];
+        if (isRhythm() && state.newFrom !== null && !Mapping.rhythmParamsComplete(state)) {
+            blockers.push(state.rhythmEndMode === 'count'
+                ? 'Zadejte počet lekcí nového bloku.'
+                : 'Zadejte konec nového bloku.');
+        }
+        if (hasInput) {
+            const past = toCreate.reduce((sum, x) => sum + x.lections.filter((l) => isPast(l.start)).length, 0);
+            if (past > 0) {
+                blockers.push(`${past} lekcí by padlo do minulosti. Vylučte je v detailu kurzů nebo změňte nové datum OD.`);
+            }
+            const emptyNames = toCreate.filter((x) => isNameInvalid(x.course)).length;
+            if (emptyNames > 0) {
+                blockers.push(`${emptyNames} kurzů by po hromadné úpravě mělo prázdný název. Upravte „Najít v názvu" / „Nahradit za".`);
+            }
+        }
+        createBlocker.textContent = blockers.join(' ');
+        createBlocker.hidden = blockers.length === 0;
+
+        createButton.disabled = !hasInput || toCreate.length === 0 || blockers.length > 0;
 
         // Warning: nové datum OD nespadá za poslední lekci zdrojového období (nezablokuje).
         let lastSource = null;
@@ -771,7 +1462,7 @@
                 : null,
         },
         courses: coursesToCreate().map(({ course, lections }) => ({
-            name: course.name,
+            name: newName(course),
             description: course.description,
             segmentId: state.segmentId,
             bookingResourceId: course.bookingResourceId,
@@ -781,8 +1472,8 @@
             registrationEnd: toUnix(course.newRegistrationEnd),
             calendarId: course.calendarId,
             lections: lections.map((l) => ({
-                start: toUnix(lectionNewStart(l)),
-                lengthMinutes: lectionLengthMinutes(l),
+                start: toUnix(l.start),
+                lengthMinutes: l.lengthMinutes,
             })),
         })),
     });
@@ -829,33 +1520,132 @@
         // jakákoli změna vstupů ho přes updateCreateSection zase povolí.
     };
 
+    // ---- Sekce B: wiring ----
+    overlapBlock.addEventListener('toggle', () => {
+        ui.overlapOpen = overlapBlock.open;
+    });
+
     // ---- Sekce C + E: wiring ----
     segmentSelect.addEventListener('change', () => {
         state.segmentId = Number(segmentSelect.value);
         savePrefs();
     });
 
-    newFromInput.addEventListener('change', () => {
+    newFromInput.addEventListener('change', async () => {
         const selected = parseDateInput(newFromInput, false);
-
+        const previous = state.newFrom;
         // Nové datum OD musí být v budoucnu - neplatná hodnota se chová jako nezadaná.
-        if (selected && selected <= new Date()) {
-            targetError.textContent = 'Nové datum OD musí být v budoucnu.';
-            targetError.hidden = false;
-            state.newFrom = null;
-        } else {
-            targetError.hidden = true;
-            state.newFrom = selected;
-        }
+        const invalid = selected !== null && selected <= new Date();
+
+        await applyRhythmChange(() => {
+            targetError.textContent = invalid ? 'Nové datum OD musí být v budoucnu.' : '';
+            targetError.hidden = !invalid;
+            state.newFrom = invalid ? null : selected;
+        }, () => {
+            newFromInput.value = toDateInputValue(previous);
+        });
         savePrefs();
-        recalculate();
     });
 
     for (const radio of document.querySelectorAll('input[name="shift-strategy"]')) {
-        radio.addEventListener('change', () => {
-            state.shiftStrategy = radio.value;
+        radio.addEventListener('change', async () => {
+            const previous = state.shiftStrategy;
+            const next = radio.value;
+            if (previous === 'rhythm' && next !== 'rhythm' && !(await confirmDiscardRhythmEdits())) {
+                checkRadio('shift-strategy', previous);
+                return;
+            }
+            showStrategyNotice('');
+            pendingPrefStrategy = null;
+            setStrategy(next);
             savePrefs();
             recalculate();
+        });
+    }
+
+    excludeNonRhythmicButton.addEventListener('click', () => setCoursesExcluded(nonRhythmicIncluded(), true));
+
+    for (const radio of document.querySelectorAll('input[name="rhythm-end-mode"]')) {
+        radio.addEventListener('change', async () => {
+            const previous = state.rhythmEndMode;
+            await applyRhythmChange(() => {
+                state.rhythmEndMode = radio.value;
+            }, () => checkRadio('rhythm-end-mode', previous));
+            savePrefs();
+        });
+    }
+
+    newToInput.addEventListener('change', () => {
+        const previous = state.newTo;
+        applyRhythmChange(() => {
+            state.newTo = parseDateInput(newToInput, false);
+        }, () => {
+            newToInput.value = toDateInputValue(previous);
+        });
+    });
+
+    lectionCountInput.addEventListener('change', () => {
+        const previous = state.lectionCount;
+        applyRhythmChange(() => {
+            const value = lectionCountInput.value.trim();
+            state.lectionCount = value === '' ? null : Number(value);
+        }, () => {
+            lectionCountInput.value = previous === null ? '' : String(previous);
+        });
+    });
+
+    excludedAddButton.addEventListener('click', () => {
+        const from = parseDateInput(excludedFromInput, false);
+        const to = parseDateInput(excludedToInput, false) ?? from;
+
+        let error = '';
+        if (!from) {
+            error = 'Zadejte datum OD vynechaného dne.';
+        } else if (Mapping.daysBetween(from, to) < 0) {
+            error = 'Datum DO musí být stejné nebo pozdější než OD.';
+        } else if (state.excludedDays.some((d) => Mapping.isSameDay(d.from, from) && Mapping.isSameDay(d.to, to))) {
+            error = 'Tento den už v seznamu je.';
+        }
+        excludedError.textContent = error;
+        excludedError.hidden = !error;
+        if (error) return;
+
+        applyRhythmChange(() => {
+            state.excludedDays.push({ from, to, label: null });
+            sortExcludedDays();
+            excludedFromInput.value = '';
+            excludedToInput.value = '';
+        });
+    });
+
+    holidaysAddButton.addEventListener('click', () => {
+        const range = holidayRange();
+        if (!range) return;
+        const holidays = Mapping.holidaysInRange(state.holidayCountry, range.from, range.to);
+        // Svátek, který už v seznamu je, se nepřidá znovu (spec 5C).
+        const toAdd = holidays.filter((h) => !state.excludedDays.some(
+            (d) => Mapping.isSameDay(d.from, h.date) && Mapping.isSameDay(d.to, h.date)));
+
+        if (toAdd.length === 0) {
+            holidaysStatus.textContent = holidays.length === 0
+                ? 'V období nejsou žádné státní svátky.'
+                : 'Všechny svátky v období už v seznamu jsou.';
+            return;
+        }
+        applyRhythmChange(() => {
+            for (const holiday of toAdd) {
+                state.excludedDays.push({ from: holiday.date, to: holiday.date, label: holiday.label });
+            }
+            sortExcludedDays();
+            holidaysStatus.textContent = `Přidáno svátků: ${toAdd.length}.`;
+        });
+    });
+
+    for (const radio of document.querySelectorAll('input[name="holiday-country"]')) {
+        radio.addEventListener('change', () => {
+            state.holidayCountry = radio.value;
+            holidaysStatus.textContent = '';
+            savePrefs();
         });
     }
 
@@ -887,11 +1677,22 @@
         recalculate();
     });
 
+    // Hromadná úprava názvů se neukládá do cookie (patří ke konkrétnímu bloku, spec 9).
+    nameFindInput.addEventListener('input', () => {
+        state.nameFind = nameFindInput.value;
+        recalculate();
+    });
+    nameReplaceInput.addEventListener('input', () => {
+        state.nameReplace = nameReplaceInput.value;
+        recalculate();
+    });
+
     // ---- Init ----
     // Nové datum OD musí být v budoucnu - min je zítřek (date input dává půlnoc zvoleného dne).
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    newFromInput.min = `${tomorrow.getFullYear()}-${pad2(tomorrow.getMonth() + 1)}-${pad2(tomorrow.getDate())}`;
+    newFromInput.min = toDateInputValue(tomorrow);
+    newToInput.min = toDateInputValue(tomorrow);
 
     const restoredPrefs = loadPrefs();
     applyPrefs(restoredPrefs);
