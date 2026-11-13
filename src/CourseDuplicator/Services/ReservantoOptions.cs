@@ -18,4 +18,16 @@ public class ReservantoOptions
 
     /// <summary>Práva požadovaná při autorizaci - v autorizační URL se opakují jako &amp;rights=X&amp;rights=Y.</summary>
     public string[] RequestedRights { get; set; } = [];
+
+    /// <summary>
+    /// Názvy povinných nastavení (bez prefixu sekce), která chybí - bez nich nelze sestavit autorizační URL.
+    /// Prázdný seznam = konfigurace pro přihlášení je kompletní.
+    /// </summary>
+    public IReadOnlyList<string> GetMissingLoginSettings()
+    {
+        var missing = new List<string>();
+        if (string.IsNullOrWhiteSpace(ClientId)) missing.Add(nameof(ClientId));
+        if (string.IsNullOrWhiteSpace(CallbackUrl)) missing.Add(nameof(CallbackUrl));
+        return missing;
+    }
 }

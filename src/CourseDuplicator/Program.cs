@@ -37,6 +37,16 @@ builder.Services.AddSession(options =>
 
 var app = builder.Build();
 
+// Chybějící ClientId/CallbackUrl aplikaci neshodí - Login místo tlačítka zobrazí návod.
+// Varování při startu ale upozorní správce ještě před prvním pokusem o přihlášení.
+var missingLoginSettings = app.Services.GetRequiredService<IOptions<ReservantoOptions>>().Value.GetMissingLoginSettings();
+if (missingLoginSettings.Count > 0)
+{
+    app.Logger.LogWarning(
+        "Chybí konfigurace Reservanto ({MissingSettings}) - přihlášení nebude fungovat, dokud se nedoplní.",
+        string.Join(", ", missingLoginSettings));
+}
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");

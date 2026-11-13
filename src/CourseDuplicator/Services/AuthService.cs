@@ -42,6 +42,9 @@ public class AuthService
 
     public bool IsAuthenticated => GetLongTimeToken() is not null;
 
+    /// <summary>Chybějící povinná nastavení pro přihlášení (viz <see cref="ReservantoOptions.GetMissingLoginSettings"/>).</summary>
+    public IReadOnlyList<string> MissingLoginSettings => _options.GetMissingLoginSettings();
+
     /// <summary>
     /// Sestaví autorizační URL podle spec 3.3 - parametr <c>rights</c> se opakuje pro každé požadované právo.
     /// </summary>

@@ -45,6 +45,52 @@ html, body {
     margin: var(--rds-space-5) 0 var(--rds-space-10);
 }
 
+.auth-card__title {
+    margin-top: var(--rds-space-5);
+}
+
+/* Návod pro správce při chybějící konfiguraci (Login) */
+.auth-setup {
+    text-align: left;
+    padding: var(--rds-space-6);
+    border: 1px solid var(--color-border);
+    border-radius: var(--rds-radius);
+    background: var(--color-surface-2);
+    font-size: var(--rds-text-sm);
+}
+
+.auth-setup__title {
+    margin: 0 0 var(--rds-space-4);
+    font-size: var(--rds-text-sm);
+    font-weight: var(--rds-weight-bold);
+    color: var(--color-ink);
+}
+
+.auth-setup__text {
+    margin: var(--rds-space-4) 0;
+    color: var(--color-ink-2);
+}
+
+.auth-setup__text:last-child {
+    margin-bottom: 0;
+}
+
+.auth-setup__list {
+    margin: var(--rds-space-3) 0;
+    padding-left: var(--rds-space-10);
+}
+
+.auth-setup__code {
+    margin: var(--rds-space-3) 0;
+    padding: var(--rds-space-4) var(--rds-space-5);
+    border-radius: var(--rds-radius-sm);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    font-size: var(--rds-text-xs);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
 /* ---------- Topbar / brand ---------- */
 
 .topbar__logout {

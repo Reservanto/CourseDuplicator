@@ -99,6 +99,8 @@ V `appsettings.json` (nebo přes user-secrets pro produkci):
 
 **Žádný `ClientSecret` - Reservanto ho nepoužívá.** Bezpečnost je zajištěna registrací `redirectUrl`.
 
+**Chybějící konfigurace:** pokud `ClientId` nebo `CallbackUrl` není vyplněné, aplikace nespadne. Při startu zaloguje varování a stránka `/Auth/Login` místo tlačítka „Přihlásit se přes Reservanto" zobrazí hlášku „Přihlášení není k dispozici" s výčtem chybějících nastavení a návodem pro správce (v Development příkaz `dotnet user-secrets set ...`, jinak názvy proměnných prostředí `Reservanto__ClientId` / `Reservanto__CallbackUrl`). Případný POST na `Start` handler se stejně odmítne, zaloguje jako chyba a vrátí tutéž stránku.
+
 ### 3.7 Implementace STT cache
 
 - STT se generuje on-demand a cachuje v session s expirací 25 minut (5min safety margin před 30min platností).

@@ -7,14 +7,59 @@
 <div class="rds-card auth-card">
     <div class="rds-card__body auth-card__body">
         <div class="rds-brand auth-card__brand"><img class="brand-logo" src="~/img/logo.svg" alt="Reservanto" width="24" height="24" /> Course Duplicator</div>
-        <h1 class="rds-h1">Přihlášení</h1>
-        <p class="auth-card__text">
-            Pro práci s kurzy se přihlaste svým účtem Reservanto.
-            Budete přesměrováni na Reservanto, kde aplikaci udělíte přístup.
-        </p>
-        <form method="post" asp-page-handler="Start">
-            <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
-            <button class="rds-btn rds-btn--primary rds-btn--lg" type="submit">Přihlásit se přes Reservanto</button>
-        </form>
+        @if (Model.MissingSettings.Count > 0)
+        {
+            <span class="rds-badge rds-badge--warning rds-badge--dot">Chybí konfigurace</span>
+            <h1 class="rds-h1 auth-card__title">Přihlášení není k dispozici</h1>
+            <p class="auth-card__text">
+                Aplikaci chybí nastavení pro připojení k Reservantu, proto se teď nejde přihlásit.
+                Nejde o chybu vašeho účtu. Kontaktujte prosím správce aplikace.
+            </p>
+            <div class="auth-setup">
+                <h2 class="auth-setup__title">Pro správce aplikace</h2>
+                <p class="auth-setup__text">Chybějící nastavení:</p>
+                <ul class="auth-setup__list">
+                    @foreach (var setting in Model.MissingSettings)
+                    {
+                        <li><code class="rds-mono">Reservanto:@(setting)</code></li>
+                    }
+                </ul>
+                @if (Model.IsDevelopment)
+                {
+                    <p class="auth-setup__text">Doplňte je přes user-secrets ve složce <code class="rds-mono">src/CourseDuplicator</code>:</p>
+                    @foreach (var setting in Model.MissingSettings)
+                    {
+                        var example = setting == "CallbackUrl" ? "https://localhost:5001/Auth/Callback" : "<UUID>";
+                        <pre class="auth-setup__code rds-mono">dotnet user-secrets set "Reservanto:@(setting)" "@(example)"</pre>
+                    }
+                }
+                else
+                {
+                    <p class="auth-setup__text">
+                        Doplňte je jako proměnné prostředí (v Azure App Service jako <em>Application settings</em>):
+                    </p>
+                    @foreach (var setting in Model.MissingSettings)
+                    {
+                        <pre class="auth-setup__code rds-mono">Reservanto__@(setting)</pre>
+                    }
+                }
+                <p class="auth-setup__text">
+                    <code class="rds-mono">ClientId</code> získáte registrací aplikace u Reservanta.
+                    Po doplnění aplikaci restartujte.
+                </p>
+            </div>
+        }
+        else
+        {
+            <h1 class="rds-h1">Přihlášení</h1>
+            <p class="auth-card__text">
+                Pro práci s kurzy se přihlaste svým účtem Reservanto.
+                Budete přesměrováni na Reservanto, kde aplikaci udělíte přístup.
+            </p>
+            <form method="post" asp-page-handler="Start">
+                <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
+                <button class="rds-btn rds-btn--primary rds-btn--lg" type="submit">Přihlásit se přes Reservanto</button>
+            </form>
+        }
     </div>
 </div>
