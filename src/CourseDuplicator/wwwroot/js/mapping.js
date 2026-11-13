@@ -402,6 +402,76 @@ window.CourseDuplicator.Mapping = (() => {
     const replaceInName = (name, find, replace) =>
         find ? name.split(find).join(replace ?? '') : name;
 
+    // ---- Časová pravítka (spec 5A, 5C) ----
+
+    /** Pondělí týdne, do kterého datum patří (půlnoc, lokální čas). */
+    const startOfWeek = (date) => {
+        const day = startOfDay(date);
+        return addDays(day, -((day.getDay() + 6) % 7));
+    };
+
+    /** Klíč kalendářního dne 'YYYY-MM-DD' (lokální čas). */
+    const dayKey = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+
+    /**
+     * Bloky kurzů pro pravítko (spec 5A): blok = kurzy se stejným týdnem začátku a stejným
+     * týdnem konce. Vstup [{ name, startDate, endDate }] (Date). Výstup seřazený podle začátku
+     * (při shodě kratší blok dřív): [{ key, from, to, courses, names: [{ name, count }] }],
+     * kde from/to = nejdřívější začátek / nejpozdější konec kurzů bloku a names jsou různé
+     * názvy (skupiny) seřazené podle počtu kurzů sestupně, pak abecedně.
+     */
+    const groupCourseBlocks = (courses) => {
+        const blocks = new Map();
+        for (const course of courses) {
+            const key = `${dayKey(startOfWeek(course.startDate))}|${dayKey(startOfWeek(course.endDate))}`;
+            let block = blocks.get(key);
+            if (!block) {
+                block = { key, from: course.startDate, to: course.endDate, courses: [] };
+                blocks.set(key, block);
+            }
+            block.courses.push(course);
+            if (course.startDate < block.from) block.from = course.startDate;
+            if (course.endDate > block.to) block.to = course.endDate;
+        }
+
+        for (const block of blocks.values()) {
+            const counts = new Map();
+            for (const course of block.courses) {
+                const name = course.name ?? '';
+                counts.set(name, (counts.get(name) ?? 0) + 1);
+            }
+            block.names = [...counts]
+                .map(([name, count]) => ({ name, count }))
+                .sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name, 'cs'));
+        }
+
+        return [...blocks.values()].sort((a, b) => (a.from - b.from) || (a.to - b.to));
+    };
+
+    /** Počty startů po kalendářních dnech: [{ day (půlnoc), count }] seřazené podle data. */
+    const countByDay = (dates) => {
+        const days = new Map();
+        for (const date of dates) {
+            const key = dayKey(date);
+            const entry = days.get(key);
+            if (entry) entry.count++;
+            else days.set(key, { day: startOfDay(date), count: 1 });
+        }
+        return [...days.values()].sort((a, b) => a.day - b.day);
+    };
+
+    /** Prvních dnů měsíců v intervalu od-do (včetně, jen datum) - značky osy pravítka. */
+    const monthStarts = (from, to) => {
+        const result = [];
+        let month = new Date(from.getFullYear(), from.getMonth(), 1);
+        if (daysBetween(from, month) < 0) month = new Date(month.getFullYear(), month.getMonth() + 1, 1);
+        while (daysBetween(month, to) >= 0) {
+            result.push(month);
+            month = new Date(month.getFullYear(), month.getMonth() + 1, 1);
+        }
+        return result;
+    };
+
     return {
         SHIFT_STRATEGIES,
         REGISTRATION_END_STRATEGIES,
@@ -432,5 +502,10 @@ window.CourseDuplicator.Mapping = (() => {
         courseGroupKey,
         groupCourses,
         replaceInName,
+        startOfWeek,
+        dayKey,
+        groupCourseBlocks,
+        countByDay,
+        monthStarts,
     };
 })();

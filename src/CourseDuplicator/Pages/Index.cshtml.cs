@@ -50,6 +50,74 @@ public class IndexModel : PageModel
         }
     }
 
+    /// <summary>Časové pravítko sekce A (spec 5A): kolik měsíců zpět a dopředu od dneška.</summary>
+    private const int CourseBlocksMonthsBack = 12;
+    private const int CourseBlocksMonthsAhead = 3;
+
+    /// <summary>
+    /// GET /?handler=CourseBlocks&amp;segmentId=42 - podklad pro časové pravítko v sekci A (spec 5A):
+    /// kurzy zaměření, které začínají v okně posledních 12 měsíců až 3 měsíce dopředu. Stačí
+    /// Course/GetList (bez Course/Get), do bloků je seskupuje frontend.
+    /// </summary>
+    public async Task<IActionResult> OnGetCourseBlocksAsync(int segmentId, CancellationToken ct)
+    {
+        if (segmentId <= 0)
+            return ApiError("Neplatné zaměření.", StatusCodes.Status400BadRequest);
+
+        // Okno zarovnané na celé týdny (po 0:00 - po 0:00, Europe/Prague): blok = kurzy se stejným
+        // týdnem začátku, takže okno uprostřed týdne by krajní bloky useklo.
+        var prague = TimeZoneInfo.FindSystemTimeZoneById("Europe/Prague");
+        var today = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, prague).Date;
+        var from = ToPragueOffset(StartOfWeek(today.AddMonths(-CourseBlocksMonthsBack)), prague);
+        var to = ToPragueOffset(StartOfWeek(today.AddMonths(CourseBlocksMonthsAhead)).AddDays(7), prague);
+
+        try
+        {
+            var stt = await _authService.GetValidShortTimeTokenAsync(ct);
+            var courses = await _reservanto.GetCourseListAsync(stt, segmentId, from.UtcDateTime, to.UtcDateTime, ct);
+
+            // Jen kurzy začínající v okně - blok, který začal dřív, by byl na pravítku useknutý.
+            var inWindow = courses
+                .Where(c => c.StartDate >= from && c.StartDate < to)
+                .OrderBy(c => c.StartDate)
+                .ToList();
+
+            _logger.LogInformation(
+                "Pravítko sekce A: {CourseCount} kurzů zaměření {SegmentId} v okně {From} - {To}.",
+                inWindow.Count, segmentId, from, to);
+
+            return new JsonResult(new
+            {
+                from = from.ToUnixTimeSeconds(),
+                to = to.ToUnixTimeSeconds(),
+                courses = inWindow.Select(c => new
+                {
+                    id = c.Id,
+                    name = c.Name,
+                    startDate = c.StartDate.ToUnixTimeSeconds(),
+                    endDate = c.EndDate.ToUnixTimeSeconds(),
+                }),
+            });
+        }
+        catch (NotAuthenticatedException)
+        {
+            return Unauthorized();
+        }
+        catch (ReservantoApiException ex)
+        {
+            _logger.LogError(ex, "Načtení kurzů pro pravítko selhalo: {StatusCode} {ResponseBody}", ex.StatusCode, ex.ResponseBody);
+            return ApiError("Přehled kurzů za poslední rok se nepodařilo načíst.");
+        }
+    }
+
+    /// <summary>Pondělí týdne, do kterého datum patří.</summary>
+    private static DateTime StartOfWeek(DateTime date) =>
+        date.Date.AddDays(-(((int)date.DayOfWeek + 6) % 7));
+
+    /// <summary>Půlnoc data v zadané zóně jako DateTimeOffset (se správným posunem letního času).</summary>
+    private static DateTimeOffset ToPragueOffset(DateTime localDate, TimeZoneInfo zone) =>
+        new(DateTime.SpecifyKind(localDate, DateTimeKind.Unspecified), zone.GetUtcOffset(localDate));
+
     /// <summary>Request body POST /?handler=LoadCourses. From/To jsou UnixTimestamp (UTC sekundy).</summary>
     public record LoadCoursesRequest(int SegmentId, long From, long To);
 
@@ -174,6 +242,14 @@ public class IndexModel : PageModel
             {
                 count = overlapping.Count,
                 names = overlapping.Take(5).Select(c => c.Name),
+                // Rozsahy pro časové pravítko sekce C (spec 5C, 7.7).
+                courses = overlapping.Select(c => new
+                {
+                    id = c.Id,
+                    name = c.Name,
+                    startDate = c.StartDate.ToUnixTimeSeconds(),
+                    endDate = c.EndDate.ToUnixTimeSeconds(),
+                }),
             });
         }
         catch (NotAuthenticatedException)

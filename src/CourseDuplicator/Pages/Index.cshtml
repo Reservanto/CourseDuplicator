@@ -29,6 +29,16 @@
             </div>
         </div>
 
+        <!-- Časové pravítko bloků kurzů (spec 5A) -->
+        <div class="duplicator__ruler-block" id="source-ruler-block" hidden>
+            <div class="duplicator__ruler-head">
+                <span class="rds-label">Bloky kurzů za poslední rok</span>
+                <span class="rds-help">Klik na pruh nastaví datum OD a DO, tažením vyberete vlastní rozsah.</span>
+            </div>
+            <div id="source-ruler"></div>
+            <p class="rds-help" id="source-ruler-status" hidden></p>
+        </div>
+
         <div class="rds-row">
             <button class="rds-btn rds-btn--primary" type="button" id="load-courses-btn">Načíst kurzy</button>
             <span class="spinner" id="load-spinner" hidden></span>
@@ -162,6 +172,22 @@
             </div>
         </dl>
 
+        <!-- Časové pravítko cílového období (spec 5C) -->
+        <div class="duplicator__ruler-block" id="target-ruler-block" hidden>
+            <span class="rds-label">Cílové období na časové ose</span>
+            <div id="target-ruler"></div>
+            <ul class="ruler__legend">
+                <li class="ruler__legend-item"><span class="ruler__swatch ruler__swatch--target"></span>Nové období</li>
+                <li class="ruler__legend-item"><span class="ruler__swatch ruler__swatch--lections"></span>Nové lekce (výška = počet za den)</li>
+                <li class="ruler__legend-item"><span class="ruler__swatch ruler__swatch--past"></span>Lekce v minulosti</li>
+                <li class="ruler__legend-item" id="legend-excluded"><span class="ruler__swatch ruler__swatch--excluded"></span>Vynechané dny</li>
+                <li class="ruler__legend-item"><span class="ruler__swatch ruler__swatch--holiday-hit"></span>Svátek s lekcemi</li>
+                <li class="ruler__legend-item"><span class="ruler__swatch ruler__swatch--holiday"></span>Svátek bez lekcí</li>
+                <li class="ruler__legend-item"><span class="ruler__swatch ruler__swatch--existing"></span>Existující kurzy</li>
+                <li class="ruler__legend-item"><span class="ruler__swatch ruler__swatch--today"></span>Dnes</li>
+            </ul>
+        </div>
+
         <p class="duplicator__period-check" id="period-check" hidden></p>
     </div>
 </section>
@@ -262,5 +288,6 @@
 
 @section Scripts {
     <script src="~/js/mapping.js" asp-append-version="true"></script>
+    <script src="~/js/ruler.js" asp-append-version="true"></script>
     <script src="~/js/duplicator.js" asp-append-version="true"></script>
 }
