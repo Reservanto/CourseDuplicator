@@ -4,6 +4,10 @@ Webová aplikace pro **hromadnou duplikaci kurzů** merchantů [Reservanto](http
 
 🔗 **Živá ukázka:** <https://demo-courseduplicator-gtecg0djhkakhses.westeurope-01.azurewebsites.net/>
 
+🎬 **Video ukázka (1 min):** výběr bloku kurzů na časové ose, nový rozvrh se svátky a prázdninami, kontrola termínů a hromadná úprava názvů.
+
+[![Video ukázka Course Duplicatoru na YouTube](https://img.youtube.com/vi/9QYyNGRkIA8/maxresdefault.jpg)](https://youtu.be/9QYyNGRkIA8)
+
 ---
 
 ## ⚠️ Disclaimer
@@ -24,21 +28,29 @@ Zdrojové kódy, Markdown prompty (`CLAUDE.md`) i specifikaci (`SPECIFICATION.md
 
 ## 🧭 Jak to funguje
 
-1. Uživatel zvolí **Zaměření**, poté **datum OD–DO** pro načtení kurzů, které chce zduplikovat, a potvrdí tlačítkem **„Načíst kurzy"**.
-2. Zobrazí se všechny kurzy z daného období a zaměření.
-3. Uživatel zvolí **„Nové datum OD"** — tedy kam se mají kurzy zkopírovat.
-4. Může zvolit i způsob posunu:
-   - **Přesný posun** — kurzy se posunou přesně o zadaný počet dní.
-   - **Zachovat dny v týdnu** — posun se zaokrouhlí na celé týdny, aby lekce zůstaly ve stejných dnech v týdnu (efektivní datum OD se může lišit o ±3 dny).
+1. **Výběr zdrojového období.** Uživatel zvolí **Zaměření** a pod ním se zobrazí **časová osa bloků kurzů** za poslední rok. Blok tvoří kurzy, které začínají ve stejném týdnu a končí ve stejném týdnu. Typicky jde o jeden běh kurzů, třeba podzimní pololetí.
+   - **Klik na blok** nastaví datum OD–DO přesně na jeho rozsah, **tažením** po ose jde vybrat vlastní rozsah. Datum OD–DO lze zadat i ručně.
+   - Tlačítko **„Načíst kurzy"** načte kurzy daného zaměření a období.
+2. **Přehled načtených kurzů.** Kurzy se stejným názvem a stejnými daty lekcí, typicky stejný kurz v různých časech nebo u různých lektorů, se **seskupí do jednoho řádku**, který jde rozbalit.
+   - Křížkem lze z duplikace vyloučit jednotlivý kurz i celou skupinu.
+   - Kurzy, které období jen **přesahují** (začínají dřív nebo končí později), jsou zvlášť a ve výchozím stavu se nekopírují. Zaškrtnutím „Zahrnout" se zkopírují celé.
+3. **Cílové období a způsob mapování.** Uživatel zadá, kam se mají kurzy zkopírovat, a zvolí strategii:
+   - **Zachovat dny v týdnu** — lekce se posunou o celé týdny, takže zůstanou ve stejných dnech v týdnu (efektivní datum OD se může lišit o ±3 dny).
+   - **Přesný posun** — lekce se posunou přesně o zadaný počet dní.
+   - **Nový rozvrh podle týdenního rytmu** — lekce se neposouvají, ale vygenerují znovu podle dne v týdnu a času každého kurzu, od začátku nového bloku do zadaného **data konce** nebo do zadaného **počtu lekcí**. Do seznamu **vynechaných dnů** jde jedním tlačítkem přidat **státní svátky (CZ/SK)** a ručně třeba školní prázdniny, lekce v těchto dnech nevzniknou. Volba je dostupná, jen když mají všechny vybrané kurzy pravidelný rytmus (jedna lekce týdně, stejný den a čas).
    > Pozn.: posun je ukotvený na **datum OD zdrojového období**, ne na první lekci. Chcete-li, aby první lekce začínala přesně zadaným dnem, zadejte v prvním kroku datum OD shodné s datem první lekce.
-5. Následně je možné zkontrolovat všechny kurzy a jejich nové umístění — kliknutím na **„detail"** se u kurzu zobrazí i jeho jednotlivé lekce.
-6. U konkrétních lekcí lze ručně **změnit datum/čas** (např. pokud by zasahovaly do svátku apod.). Takto upravená lekce se „připne" a globální přepočet ji už nemění.
-7. Dají se nastavit dvě hodnoty, které aktuálně nejsou součástí API, a web je tedy nedokázal načíst:
-   - **„Povolit rezervace jednotlivých lekcí"**
-   - **„Konec registrace"** — tedy dokdy je možné se na kurz rezervovat.
-8. Tlačítkem **„Vytvořit kurzy"** dojde k okamžitému vytvoření kurzů.
+4. **Časová osa cílového období** ukáže nové lekce po dnech, státní svátky (zvýrazněné, pokud na ně padne lekce), vynechané dny a kurzy, které už v novém období existují. Na existující kurzy upozorní i samostatná hláška.
+5. **Kontrola kurzů s novými daty.** Kliknutím na **„detail"** se u kurzu zobrazí jeho jednotlivé lekce. Pokud mají kurzy kvůli vynechaným dnům různý počet lekcí, aplikace na to upozorní.
+   - Jednotlivé lekce lze vyloučit, nebo jim ručně **změnit datum/čas**. Takto upravená lekce se „připne" a globální přepočet ji už nemění.
+6. **Globální nastavení nových kurzů:**
+   - **„Povolit rezervace jednotlivých lekcí"** — toto nastavení API u původních kurzů nevrací, proto se volí tady pro všechny nové kurzy.
+   - **„Konec registrace"** — zachovat odstup od začátku kurzu jako u původního kurzu, začátek první lekce, nebo N dní před začátkem.
+   - **Hromadná úprava názvů** — nahradí text v názvech všech nových kurzů, např. označení období `AB/26` → `AB/27`.
+7. Tlačítkem **„Vytvořit kurzy"** dojde k okamžitému vytvoření kurzů.
 
 > 🛑 **Pozor, tato akce je nevratná!** Pokud takto zkopírujete kurzy do špatných dat, musíte je upravit nebo smazat ručně v administraci Reservanta.
+
+Z původního kurzu se kopíruje zdroj (lektor), služba, kapacita, cena, popis a kalendář. **Přihlášení zákazníci se nekopírují.**
 
 ---
 
